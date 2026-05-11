@@ -27,10 +27,10 @@
 /* ---- Thread storage ---------------------------------------------------- */
 
 static OSThread  imuThread;
-static uint32_t  stack_imu[128];
+static uint32_t  stack_imu[512];   /* 2 kB: HAL I2C + FPU exception frames */
 
 static OSThread  idleThreadStack;  /* Q_REQUIRE inside OS_init uses idleThread */
-static uint32_t  stack_idle[40];
+static uint32_t  stack_idle[64];   /* 256 B: sadece __WFI, ama IRQ frame lazım */
 
 /* ---- Sensor sample buffers (DMA-targeted) ----------------------------- */
 
@@ -197,6 +197,11 @@ _Noreturn void Q_onAssert(char const * const module, int const id)
 void Application_Start(void)
 {
     (void)idleThreadStack;  /* keep symbol — currently storage only */
+
+    /* MiROS PendSV only saves r4-r11, not FPU registers. Disabling automatic
+     * FPU context preservation (ASPEN+LSPEN=0) keeps exception frames basic
+     * (32 bytes) even when float is used. Safe as long as no ISR uses FPU. */
+    FPU->FPCCR &= ~(FPU_FPCCR_ASPEN_Msk | FPU_FPCCR_LSPEN_Msk);
 
     OS_init(stack_idle, sizeof(stack_idle));
 

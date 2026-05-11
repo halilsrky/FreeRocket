@@ -10,12 +10,21 @@ Eski FreeRTOS tabanlı SKYRTOS projesi MiROS'a port ediliyor.
 mini_rtos/
 ├── Cube/         ← aktif proje (STM32CubeIDE .ioc + HAL + MiROS)
 ├── OLD_Project/  ← SKYRTOS arşivi — referans, driver portu için ilham
+├── Report.md     ← bitirme raporu için teknik notlar (zorluklar, teşhis, çözüm)
 └── CLAUDE.md     ← bu dosya
 ```
 
 **`OLD_Project/`'i ASLA silme.** Kalman, Mahony quaternion, BME280, GPS,
 sensor fusion, flight algorithm gibi modüller buradan port edilecek
 (kopya değil — okuyup MiROS+HAL'e uyarlayarak port).
+
+**`Report.md` — bitirme raporu için ham not deposu.** Ciddi teknik
+zorluklar (kök neden + teşhis süreci + uygulanan çözüm + proper fix
+TODO'ları) buraya kaydedilir. Sıradan refactor / küçük bug fix
+kaydedilmez — rapora yazılacak değerde, öğretici olaylar için.
+Her giriş kendi başlığı altında, tarihli; rapor yazımında bu notlar
+genişletilip akademik dile çevrilecek. Önemli bir hata teşhisi /
+mimari karar / non-obvious bug çözümü olduğunda buraya ekle.
 
 ## Aktif proje (`Cube/`)
 
