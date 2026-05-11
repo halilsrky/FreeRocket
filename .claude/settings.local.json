@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(arm-none-eabi-gcc --version)",
+      "Bash(ninja --version)",
+      "Bash(cmake --version)",
+      "PowerShell(arm-none-eabi-gcc --version)",
+      "PowerShell(ninja --version)",
+      "PowerShell(cmake --version)",
+      "PowerShell(ls \"$env:USERPROFILE\\\\.vscode\\\\extensions\")",
+      "PowerShell(Get-ChildItem \"$env:USERPROFILE\\\\.vscode\\\\extensions\\\\stmicroelectronics.stm32cube-ide-build-cmake-1.45.0-win32-x64\" -Recurse -Filter \"cmake.exe\" | Select-Object FullName)",
+      "PowerShell(ls \"$env:USERPROFILE\\\\.vscode\\\\extensions\\\\stmicroelectronics.stm32cube-ide-build-cmake-1.45.0-win32-x64\")",
+      "PowerShell(Get-ChildItem \"$env:USERPROFILE\\\\.vscode\\\\extensions\\\\stmicroelectronics.stm32cube-ide-core-1.3.0-win32-x64\" | Select-Object Name; ls \"$env:LOCALAPPDATA\\\\STMicroelectronics\" -ErrorAction SilentlyContinue | Select-Object Name)",
+      "PowerShell(ls \"$env:USERPROFILE\\\\.vscode\\\\extensions\\\\stmicroelectronics.stm32cube-ide-core-1.3.0-win32-x64\")",
+      "PowerShell(ls \"$env:USERPROFILE\\\\AppData\\\\Roaming\\\\stm32cube\")",
+      "PowerShell($env:PATH -split \";\" | Where-Object { $_ -ne \"\" } | Select-Object)",
+      "PowerShell(ls \"$env:LOCALAPPDATA\\\\stm32cube\")",
+      "PowerShell(ls \"$env:LOCALAPPDATA\\\\stm32cube\\\\bundles\")",
+      "PowerShell(Get-ChildItem \"$env:LOCALAPPDATA\\\\stm32cube\\\\bundles\\\\gnu-tools-for-stm32\" -Recurse -Filter \"arm-none-eabi-gcc.exe\" | Select-Object FullName; Get-ChildItem \"$env:LOCALAPPDATA\\\\stm32cube\\\\bundles\\\\cmake\" -Recurse -Filter \"cmake.exe\" | Select-Object FullName; Get-ChildItem \"$env:LOCALAPPDATA\\\\stm32cube\\\\bundles\\\\ninja\" -Recurse -Filter \"ninja.exe\" | Select-Object FullName)",
+      "Bash(rm \"c:\\\\Users\\\\Halil\\\\STM32CubeIDE\\\\mini_rtos\\\\build.ps1\")"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\Halil\\STM32CubeIDE\\mini_rtos"
+    ]
+  }
+}

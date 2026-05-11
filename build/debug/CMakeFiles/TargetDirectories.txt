@@ -1,0 +1,3 @@
+C:/Users/Halil/STM32CubeIDE/mini_rtos/build/debug/CMakeFiles/mini_rtos.elf.dir
+C:/Users/Halil/STM32CubeIDE/mini_rtos/build/debug/CMakeFiles/edit_cache.dir
+C:/Users/Halil/STM32CubeIDE/mini_rtos/build/debug/CMakeFiles/rebuild_cache.dir

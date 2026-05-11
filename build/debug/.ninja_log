@@ -1,0 +1,16 @@
+# ninja log v7
+47	89	8001962929676527	CMakeFiles/mini_rtos.elf.dir/startup_stm32f446xx.s.obj	a2bc7023a88b5816
+17	110	8001962929374607	CMakeFiles/mini_rtos.elf.dir/main.c.obj	677abbf41666b4d0
+27	244	8001962929476383	CMakeFiles/mini_rtos.elf.dir/miros.c.obj	d5ffb20ca8f1b740
+41	228	8001962929626129	CMakeFiles/mini_rtos.elf.dir/system_stm32f4xx.c.obj	51491389737e6cfb
+22	229	8001962929430863	CMakeFiles/mini_rtos.elf.dir/bsp.c.obj	a5d07e5362ebcf5d
+254	435	8001962931749334	mini_rtos.elf	dd2680453d728833
+2	305	8001963740154171	build.ninja	4e4b3efee58b14da
+2	305	8001963740134090	C:/Users/Halil/STM32CubeIDE/mini_rtos/build/debug/cmake_install.cmake	4e4b3efee58b14da
+32	236	8001962929523958	CMakeFiles/mini_rtos.elf.dir/i2c1.c.obj	5a99afc08079ca08
+36	254	8001962929575912	CMakeFiles/mini_rtos.elf.dir/bmi088.c.obj	cec2f2f413ac647c
+3	102	8001966420759735	CMakeFiles/mini_rtos.elf.dir/main.c.obj	677abbf41666b4d0
+9	237	8001966420827510	CMakeFiles/mini_rtos.elf.dir/bsp.c.obj	a5d07e5362ebcf5d
+15	265	8001966420880387	CMakeFiles/mini_rtos.elf.dir/i2c1.c.obj	5a99afc08079ca08
+21	268	8001966420918271	CMakeFiles/mini_rtos.elf.dir/bmi088.c.obj	cec2f2f413ac647c
+269	476	8001966423419707	mini_rtos.elf	dd2680453d728833

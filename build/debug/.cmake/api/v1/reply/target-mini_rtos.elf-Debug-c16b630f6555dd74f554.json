@@ -1,0 +1,363 @@
+{
+	"artifacts" : 
+	[
+		{
+			"path" : "mini_rtos.elf"
+		}
+	],
+	"backtrace" : 1,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"add_executable",
+			"target_link_options",
+			"target_compile_options",
+			"target_compile_definitions",
+			"target_include_directories"
+		],
+		"files" : 
+		[
+			"CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 17,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 0,
+				"line" : 46,
+				"parent" : 0
+			},
+			{
+				"command" : 2,
+				"file" : 0,
+				"line" : 38,
+				"parent" : 0
+			},
+			{
+				"command" : 3,
+				"file" : 0,
+				"line" : 27,
+				"parent" : 0
+			},
+			{
+				"command" : 4,
+				"file" : 0,
+				"line" : 32,
+				"parent" : 0
+			}
+		]
+	},
+	"codemodelVersion" : 
+	{
+		"major" : 2,
+		"minor" : 10
+	},
+	"compileGroups" : 
+	[
+		{
+			"compileCommandFragments" : 
+			[
+				{
+					"fragment" : "-g"
+				},
+				{
+					"backtrace" : 3,
+					"fragment" : "-mcpu=cortex-m4"
+				},
+				{
+					"backtrace" : 3,
+					"fragment" : "-mthumb"
+				},
+				{
+					"backtrace" : 3,
+					"fragment" : "-mfpu=fpv4-sp-d16"
+				},
+				{
+					"backtrace" : 3,
+					"fragment" : "-mfloat-abi=hard"
+				},
+				{
+					"backtrace" : 3,
+					"fragment" : "-Wall"
+				},
+				{
+					"backtrace" : 3,
+					"fragment" : "-Wextra"
+				},
+				{
+					"backtrace" : 3,
+					"fragment" : "-ffunction-sections"
+				},
+				{
+					"backtrace" : 3,
+					"fragment" : "-fdata-sections"
+				},
+				{
+					"backtrace" : 3,
+					"fragment" : "-g3"
+				},
+				{
+					"backtrace" : 3,
+					"fragment" : "-O0"
+				}
+			],
+			"defines" : 
+			[
+				{
+					"backtrace" : 4,
+					"define" : "HSE_VALUE=8000000U"
+				},
+				{
+					"backtrace" : 4,
+					"define" : "STM32F446xx"
+				}
+			],
+			"includes" : 
+			[
+				{
+					"backtrace" : 5,
+					"path" : "C:/Users/Halil/STM32CubeIDE/mini_rtos"
+				},
+				{
+					"backtrace" : 5,
+					"path" : "C:/Users/Halil/STM32CubeIDE/mini_rtos/CMSIS/Include"
+				},
+				{
+					"backtrace" : 5,
+					"path" : "C:/Users/Halil/STM32CubeIDE/mini_rtos/CMSIS/Device/ST/STM32F4xx/Include"
+				}
+			],
+			"language" : "C",
+			"sourceIndexes" : 
+			[
+				0,
+				1,
+				2,
+				3,
+				4,
+				5
+			]
+		},
+		{
+			"compileCommandFragments" : 
+			[
+				{
+					"fragment" : "-g"
+				},
+				{
+					"backtrace" : 3,
+					"fragment" : "-mcpu=cortex-m4"
+				},
+				{
+					"backtrace" : 3,
+					"fragment" : "-mthumb"
+				},
+				{
+					"backtrace" : 3,
+					"fragment" : "-mfpu=fpv4-sp-d16"
+				},
+				{
+					"backtrace" : 3,
+					"fragment" : "-mfloat-abi=hard"
+				},
+				{
+					"backtrace" : 3,
+					"fragment" : "-Wall"
+				},
+				{
+					"backtrace" : 3,
+					"fragment" : "-Wextra"
+				},
+				{
+					"backtrace" : 3,
+					"fragment" : "-ffunction-sections"
+				},
+				{
+					"backtrace" : 3,
+					"fragment" : "-fdata-sections"
+				},
+				{
+					"backtrace" : 3,
+					"fragment" : "-g3"
+				},
+				{
+					"backtrace" : 3,
+					"fragment" : "-O0"
+				}
+			],
+			"defines" : 
+			[
+				{
+					"backtrace" : 4,
+					"define" : "HSE_VALUE=8000000U"
+				},
+				{
+					"backtrace" : 4,
+					"define" : "STM32F446xx"
+				}
+			],
+			"includes" : 
+			[
+				{
+					"backtrace" : 5,
+					"path" : "C:/Users/Halil/STM32CubeIDE/mini_rtos"
+				},
+				{
+					"backtrace" : 5,
+					"path" : "C:/Users/Halil/STM32CubeIDE/mini_rtos/CMSIS/Include"
+				},
+				{
+					"backtrace" : 5,
+					"path" : "C:/Users/Halil/STM32CubeIDE/mini_rtos/CMSIS/Device/ST/STM32F4xx/Include"
+				}
+			],
+			"language" : "ASM",
+			"sourceIndexes" : 
+			[
+				6
+			]
+		}
+	],
+	"id" : "mini_rtos.elf::@6890427a1f51a3e7e1df",
+	"link" : 
+	{
+		"commandFragments" : 
+		[
+			{
+				"fragment" : "-g",
+				"role" : "flags"
+			},
+			{
+				"backtrace" : 2,
+				"fragment" : "-mcpu=cortex-m4",
+				"role" : "flags"
+			},
+			{
+				"backtrace" : 2,
+				"fragment" : "-mthumb",
+				"role" : "flags"
+			},
+			{
+				"backtrace" : 2,
+				"fragment" : "-mfpu=fpv4-sp-d16",
+				"role" : "flags"
+			},
+			{
+				"backtrace" : 2,
+				"fragment" : "-mfloat-abi=hard",
+				"role" : "flags"
+			},
+			{
+				"backtrace" : 2,
+				"fragment" : "-TC:/Users/Halil/STM32CubeIDE/mini_rtos/STM32F446RETx_FLASH.ld",
+				"role" : "flags"
+			},
+			{
+				"backtrace" : 2,
+				"fragment" : "--specs=nano.specs",
+				"role" : "flags"
+			},
+			{
+				"backtrace" : 2,
+				"fragment" : "--specs=nosys.specs",
+				"role" : "flags"
+			},
+			{
+				"backtrace" : 2,
+				"fragment" : "-Wl,--gc-sections",
+				"role" : "flags"
+			},
+			{
+				"backtrace" : 2,
+				"fragment" : "-Wl,-Map=mini_rtos.map,--cref",
+				"role" : "flags"
+			}
+		],
+		"language" : "C"
+	},
+	"name" : "mini_rtos.elf",
+	"nameOnDisk" : "mini_rtos.elf",
+	"paths" : 
+	{
+		"build" : ".",
+		"source" : "."
+	},
+	"sourceGroups" : 
+	[
+		{
+			"name" : "Source Files",
+			"sourceIndexes" : 
+			[
+				0,
+				1,
+				2,
+				3,
+				4,
+				5
+			]
+		},
+		{
+			"name" : "",
+			"sourceIndexes" : 
+			[
+				6
+			]
+		}
+	],
+	"sources" : 
+	[
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "main.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "bsp.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "miros.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "i2c1.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "bmi088.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "system_stm32f4xx.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 1,
+			"path" : "startup_stm32f446xx.s",
+			"sourceGroupIndex" : 1
+		}
+	],
+	"type" : "EXECUTABLE"
+}
