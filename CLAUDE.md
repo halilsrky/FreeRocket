@@ -1,176 +1,216 @@
-# mini_rtos — STM32F446 NUCLEO Flight Computer
+# SKYRTOS — STM32F446 NUCLEO Flight Computer
 
-Halil'in bitirme projesi. BMI088 IMU + BME280 baro üzerinden çalışan
-roket flight computer'ı. Kendi yazdığı **MiROS** kernel'i + STM32 **HAL**.
-Eski FreeRTOS tabanlı SKYRTOS projesi MiROS'a port ediliyor.
+Halil'in bitirme projesi. BMI088 IMU + BME280 baro + GNSS + LoRa içeren roket flight computer yazılımı.
+
+**Karar değişti:** Kendi mini RTOS kernel'ımızı yazmayacağız.
+
+* Neden: stack overflow, hard fault, race condition, scheduler edge-case ve ISR/priority hataları proje hızını ve güvenilirliğini bozar.
+* Hedef: **STM32CubeIDE ile eklenmiş FreeRTOS tabanlı, temiz, okunabilir, adım adım ilerleyen bir mimari**.
+* Bu proje artık "kernel yazma" projesi değil; **uçuş bilgisayarı mimarisi ve güvenilirlik projesi**.
 
 ## Klasör yapısı
 
 ```
-mini_rtos/
-├── Cube/         ← aktif proje (STM32CubeIDE .ioc + HAL + MiROS)
-├── OLD_Project/  ← SKYRTOS arşivi — referans, driver portu için ilham
-├── Report.md     ← bitirme raporu için teknik notlar (zorluklar, teşhis, çözüm)
-└── CLAUDE.md     ← bu dosya
+FreeRtos_project/       ← aktif proje (STM32CubeIDE .ioc + HAL + FreeRTOS)
+├── OLD_Project/        ← SKYRTOS arşivi — referans, driver ve algoritma portu için
+├── Report.md           ← bitirme raporu için teknik notlar
+└── CLAUDE.md           ← bu dosya
 ```
 
-**`OLD_Project/`'i ASLA silme.** Kalman, Mahony quaternion, BME280, GPS,
-sensor fusion, flight algorithm gibi modüller buradan port edilecek
-(kopya değil — okuyup MiROS+HAL'e uyarlayarak port).
+**`OLD_Project/` asla silinmeyecek.** Buradan algoritma ve sürücü mantığı port edilecek; doğrudan kopyala-yapıştır değil, okuyup sadeleştirerek uyarlanacak.
 
-**`Report.md` — bitirme raporu için ham not deposu.** Ciddi teknik
-zorluklar (kök neden + teşhis süreci + uygulanan çözüm + proper fix
-TODO'ları) buraya kaydedilir. Sıradan refactor / küçük bug fix
-kaydedilmez — rapora yazılacak değerde, öğretici olaylar için.
-Her giriş kendi başlığı altında, tarihli; rapor yazımında bu notlar
-genişletilip akademik dile çevrilecek. Önemli bir hata teşhisi /
-mimari karar / non-obvious bug çözümü olduğunda buraya ekle.
+**`Report.md`** — bitirme raporu için ham teknik notlar deposu. Sadece rapor değeri olan olaylar yazılır: kök neden, teşhis, çözüm, tekrar etmemesi için alınan önlem. Sıradan refactor notları buraya girmez.
 
-## Aktif proje (`Cube/`)
+## Aktif proje — mevcut dosya yapısı
 
-CubeMX `.ioc` üzerinden peripheral init üretiliyor; biz **sadece**
-`Core/Src/app.c` (uygulama katmanı) ve `Core/Src/bmi088.c` (HAL bazlı
-sürücü) yazıyoruz. Cube'un ürettiği dosyalara minimum dokunuş:
+### CubeMX üretilen (dokunma)
 
-| Dosya | Görev | Cube üretti mi? |
-| --- | --- | --- |
-| `Core/Src/main.c` | HAL init + `Application_Start()` çağrısı | Evet — USER CODE 2'ye tek satır eklenmiş |
-| `Core/Src/app.c` | MiROS init, task'lar, HAL callback override'ları | Hayır |
-| `Core/Src/bmi088.c` | BMI088 sürücü (polled init + DMA read + parse) | Hayır |
-| `Core/Src/miros.c` | Kernel (priority scheduler + event flags + PendSV asm) | Hayır |
-| `Core/Inc/app.h` | Event mask define'ları, `Application_Start()` proto | Hayır |
-| `Core/Inc/bmi088.h`, `bmi088_regs.h` | Driver API + register map | Hayır |
-| `Core/Inc/miros.h`, `qassert.h` | Kernel API + assertion helper | Hayır |
-| `Core/Src/stm32f4xx_it.c` | IRQ vektörleri | Evet — **PendSV ve SysTick stubları silindi** (MiROS sağlıyor) |
-| `Core/Src/i2c.c`, `gpio.c`, ... | Peripheral init | Evet, dokunma |
-| `Core/Src/stm32f4xx_hal_timebase_tim.c` | HAL tick TIM6'da | Evet, dokunma |
-| `cmake/stm32cubemx/CMakeLists.txt` | Cube source listesi | Evet, dokunma — user source `Cube/CMakeLists.txt`'e eklenir |
+| Dosya | Görev |
+| ----- | ----- |
+| `Core/Src/main.c` | HAL init → `osKernelStart()` |
+| `Core/Src/freertos.c` | `MX_FREERTOS_Init()` → `Application_Start()` |
+| `Core/Src/gpio.c`, `i2c.c`, `dma.c`, `usart.c`, `tim.c` | Peripheral init |
+| `Core/Src/stm32f4xx_it.c` | IRQ vektörleri |
+| `Middlewares/Third_Party/FreeRTOS/` | FreeRTOS middleware |
 
-## Mimari kararlar (SABİT — tekrar tartışılmaz)
+### Uygulama katmanı (bizim yazdığımız)
 
-- **MiROS** kullanılıyor: priority scheduler (1..31, prio = index), per-thread
-  event flags (`OS_evtWait` LSB-first tek bit consume eder),
-  ISR-safe `OS_evtSignal_FromISR` (PRIMASK save/restore, PendSV pend).
-- **HAL** kullanılıyor. Önce bare-metal denedik (i2c1.c register-level,
-  EXTI manuel setup) — Halil için karmaşık geldi, **2026-05-11 pivot**
-  ile HAL'e geçtik. Register-level kod silindi.
-- **FreeRTOS yok, AO/QP yok.** İki kernel paralel çalışmaz. Düz event
-  queue + dispatcher mantığı kullanılır.
-- **Watchdog (IWDG)** her senaryoda eklenmeli (bitirme projesi de olsa).
-- **Donanımdan ayrı main:** `main.c` HAL init yapar, sonra
-  `Application_Start()` çağırır (USER CODE 2 bloğu — regenerate-safe).
-  MiROS init, task'lar, callback'ler `app.c`'de.
-- **HAL tick TIM6'da**, SysTick MiROS'a serbest.
-- **PendSV/SysTick handler çakışması:** `stm32f4xx_it.c`'deki boş Cube
-  stubları silindi. MiROS kendi versiyonlarını sağlıyor. CubeMX yeniden
-  generate ederse stublar geri gelir → tekrar silmek gerek (dosyada uyarı
-  yorumu var).
+| Dosya | Görev | Durum |
+| ----- | ----- | ----- |
+| `Core/Src/app.c` / `Inc/app.h` | Tek giriş noktası — task'ları oluşturur | ✅ Tamamlandı |
+| `Core/Src/bmi088.c` / `Inc/bmi088.h` | BMI088 driver: init, config, DMA başlat, parse | ✅ Tamamlandı |
+| `Core/Inc/bmi088_defs.h` | Register adresleri ve sabitler | ✅ Tamamlandı |
+| `Core/Src/mahony.c` / `Inc/mahony.h` | Mahony AHRS filtresi (6DOF) | ✅ Tamamlandı |
+| `Core/Src/imu_task.c` / `Inc/imu_task.h` | IMU pipeline task | ✅ Tamamlandı |
+| `Core/Inc/imu_snapshot.h` | `imu_snapshot_t` struct + `imu_snapshot_peek()` | ✅ Tamamlandı |
+| `Core/Src/telemetry_task.c` / `Inc/telemetry_task.h` | UART2 DMA binary telemetry (50 Hz) | ✅ Tamamlandı |
 
-## Coding kuralları
+### Henüz kapsam dışı
 
-- **Busy-wait / blocking polling yasak.** Sensör okuma her zaman
-  `HAL_I2C_Mem_Read_DMA` + DMA complete event üzerinden. `HAL_Delay`
-  yerine `OS_delay(ticks)`.
-- **HAL weak callback override'ları** event POST için kullanılır:
-  - `HAL_GPIO_EXTI_Callback(GPIO_Pin)` — EXTI3/EXTI4 dispatch
-  - `HAL_I2C_MemRxCpltCallback(hi2c)` — DMA complete
-  - `HAL_I2C_ErrorCallback(hi2c)` — bus error
-- **ISR'lardan** `OS_evtSignal_FromISR(&thread, EVT_BIT)` kullanılır.
-- Comment yazma kuralı: WHY non-obvious ise yaz (datasheet quirk, hidden
-  invariant), WHAT'i kod söylüyor. Tek satır docstring/comment yeter.
-- Türkçe açıklama OK ama kodda identifier'lar İngilizce.
+* BME280 baro driver
+* GNSS (L86)
+* LoRa (E22)
+* Flight state machine
+* Kalman altitude filtresi
+* IWDG watchdog
+* Gyro offset kalibrasyonu
+* Eksen haritalaması (PCB montajına göre ayarlanacak)
 
-## Donanım haritası (.ioc'ten)
+## Mimari kararlar
+
+* **FreeRTOS kullanılıyor.** Kendi kernel'ımız yok.
+* **AO / QP / ikinci bir scheduler yok.** Tek yürütme modeli FreeRTOS.
+* **Blocking çağrılar minimumda.** `HAL_Delay` yok; init sırasında `vTaskDelay` kullanılıyor.
+* **ISR içinde iş minimum.** ISR sadece `xTaskNotifyFromISR` çağırır, başka iş yapmaz.
+* **Veri sahipliği tek kaynaklı.** IMU task kendi state'ini tek başına yönetir; pointer paylaşmaz.
+* **Watchdog (IWDG) şart.** Henüz eklenmedi — öncelikli sonraki adım.
+* **Synchronization primitif seçimi:**
+  * ISR → task: `task notification` (`xTaskNotifyFromISR` + `xTaskNotifyWait`)
+  * Task → task (snapshot): `queue depth=1` + `xQueueOverwrite` / `xQueuePeek`
+  * Mutex: IMU path'inde kullanılmıyor
+  * Semaphore: kullanılmıyor
+* **Mode geçişleri explicit state machine ile yönetilecek.**
+
+## IMU pipeline
+
+```
+EXTI3 (ACC DRDY, PB3)  ──→ HAL_GPIO_EXTI_Callback
+EXTI4 (GYRO DRDY, PB4) ──→ HAL_GPIO_EXTI_Callback
+                                    │
+                        xTaskNotifyFromISR (NOTIFY_ACC/GYRO_DRDY)
+                                    │
+                              imuTask wakes
+                                    │
+                    bmi088_start_accel_dma / bmi088_start_gyro_dma
+                      (I2C1 paylaşımlı — dma_state makinesi sıralar)
+                                    │
+                        HAL_I2C_MemRxCpltCallback
+                                    │
+                        xTaskNotifyFromISR (NOTIFY_DMA_DONE)
+                                    │
+                              imuTask wakes
+                                    │
+                        bmi088_parse_accel / bmi088_parse_gyro
+                                    │
+                       acc_fresh && gyro_fresh?
+                                    │
+                           mahony_update()
+                                    │
+                       xQueueOverwrite(s_snapshot_q, &snap)
+```
+
+## Telemetry pipeline
+
+```
+telemetryTask (50 Hz, osPriorityBelowNormal)
+    │
+    ├── vTaskDelayUntil(20 ms)
+    ├── imu_snapshot_peek(&snap)      ← kopyalar, bloklamaz
+    ├── frame doldur (44 byte binary)
+    ├── HAL_UART_Transmit_DMA(&huart2, ...)
+    └── xTaskNotifyWait(TX_DONE, 20 ms timeout)
+         │
+    HAL_UART_TxCpltCallback → xTaskNotifyFromISR
+```
+
+**Frame formatı (44 byte, little-endian):**
+```
+[AA 55][ts_ms:u32][ax:f][ay:f][az:f][gx:f][gy:f][gz:f][roll:f][pitch:f][yaw:f][crc:u16]
+```
+Python: `struct.unpack('<2sI3f3f3fH', data)`
+
+## Task modeli
+
+| Task | Öncelik | Stack | Görev |
+| ---- | ------- | ----- | ----- |
+| IMU | `osPriorityHigh` | 512 × 4 B | Sensör okuma + Mahony + snapshot publish |
+| Telemetry | `osPriorityBelowNormal` | 256 × 4 B | 50 Hz UART2 DMA TX |
+
+## Donanım haritası
 
 | Peripheral | Pin | Görev |
-| --- | --- | --- |
-| I2C1 (DMA1 Stream0 Ch1) | PB8 SCL, PB9 SDA | BMI088 (acc 0x18, gyro 0x68) |
-| I2C3 | PA8 SCL, PC9 SDA | BME280 (sonra) |
-| EXTI3 | PB3 | BMI088 ACC INT1 (DRDY, rising) |
-| EXTI4 | PB4 | BMI088 GYRO INT3 (DRDY, rising) |
-| USART2 | DMA2 Stream5/6 | (gelecek: telemetry) |
-| USART6 / UART4 | DMA | (gelecek) |
-| SPI1, SPI3 | — | (gelecek: SD, W25 flash) |
-| TIM2 | — | (gelecek) |
-| TIM6 | dahili | HAL tick (1 ms) |
-
-`Cube/Core/Src/gpio.c`, `i2c.c`, `dma.c` Cube tarafından üretildi,
-detaylar oradadır.
-
-## Event yapısı (şu anki tek task: imuThread)
-
-```c
-// Cube/Core/Inc/app.h
-#define EVT_ACCEL_DRDY  (1U << 0)
-#define EVT_GYRO_DRDY   (1U << 1)
-#define EVT_DMA_DONE    (1U << 2)
-#define EVT_I2C_ERROR   (1U << 3)
-```
-
-`imuThread` (prio 5):
-```
-EXTI3 (ACC DRDY)  →  HAL_GPIO_EXTI_Callback  →  POST EVT_ACCEL_DRDY
-EXTI4 (GYRO DRDY) →  HAL_GPIO_EXTI_Callback  →  POST EVT_GYRO_DRDY
-imuThread.evtWait → DRDY → HAL_I2C_Mem_Read_DMA(6 bytes)
-DMA1_Stream0 IRQ  →  HAL_I2C_MemRxCpltCallback  →  POST EVT_DMA_DONE
-imuThread.evtWait → DMA_DONE → parse + (TODO) Mahony update
-```
-
-Tek I2C bus + tek DMA stream var → DRDY'ler serileştirilir.
-`app.c`'deki `s_phase` (IDLE / READ_ACCEL / READ_GYRO) state machine
-in-flight transfer'i izler, `s_pending_accel/gyro` bekleyen DRDY'leri
-tutar, `imu_kick_next()` DMA done'da bekleyeni başlatır.
+| ---------- | --- | ----- |
+| I2C1 | PB8 SCL, PB9 SDA | BMI088 (ACC + GYRO ortak bus) |
+| I2C3 | PA8 SCL, PC9 SDA | BME280 |
+| EXTI3 | PB3 | BMI088 ACC DRDY |
+| EXTI4 | PB4 | BMI088 GYRO DRDY |
+| USART2 | DMA TX/RX | Telemetry (ST-Link VCP) |
+| USART6 | DMA RX | GNSS (L86) |
+| UART4 | DMA TX | LoRa (E22) |
+| SPI1 / SPI3 | — | Flash / RF |
+| BUZZER | PB14 | Durum sinyali |
 
 ## Build
 
 ```powershell
-# Cube/ klasöründen
+# FreeRtos_project/ klasöründen
 cmake --preset Debug
 cmake --build build/Debug
 ```
 
-Çıktı: `Cube/build/Debug/mirtos.elf` (+ .hex + .bin tarafından otomatik).
-Size kontrolü için `arm-none-eabi-size build/Debug/mirtos.elf`.
+Çıktı: `FreeRtos_project/build/Debug/*.elf` + `.hex` + `.bin`
 
-## OLD_Project'ten port edilecek modüller
+Mevcut boyutlar: FLASH ~52 KB / 512 KB (%10), RAM ~22 KB / 128 KB (%17).
 
-Yol: `OLD_Project/Core/Src/` (working directory altında — relative path).
-Kopyalamak yerine algoritmik mantığı çıkarıp MiROS+HAL'e uyarla.
+## old_project'ten port durumu
 
-| Dosya | İçerik | Port önceliği |
-| --- | --- | --- |
-| `quaternion.c` / `queternion.c` | Mahony quaternion update — typo'lu iki versiyon var, hangisi doğru kontrol et | Yüksek — imuThread parse'ından sonra çağrılacak |
-| `kalman.c` | Altitude Kalman filter | Yüksek — flightTask için |
-| `bme280.c` | Basınç/sıcaklık sürücü (I2C3) | Yüksek — flightTask DRDY'si |
-| `flight_algorithm.c` | Uçuş fazı state machine (boost/coast/apogee/descent/touchdown) | Orta |
-| `sensor_fusion.c` | Sensor fusion + accel failure detection | Orta — Mahony + Kalman entegrasyon |
-| `e22_lib.c` | LoRa telemetry (E22 radyo) | Düşük |
-| `l86_gnss.c` | L86 GPS | Düşük |
-| `data_logger.c` | SD kart write buffering | Düşük |
-| `uart_handler.c` | UART2 RX command dispatcher | Düşük |
-| `freertos.c` | Eski task tanımları (MiROS karşılığı `app.c`) | Sadece referans — port etme |
+| Dosya | İçerik | Durum |
+| ----- | ------- | ----- |
+| `bmi088.c` | BMI088 driver | ✅ Yeniden yazıldı, port edildi |
+| `queternion.c` | Mahony quaternion | ✅ `mahony.c` olarak port edildi |
+| `bme280.c` | BME280 driver | Sonraki aşama |
+| `kalman.c` | Altitude Kalman filter | Sonraki aşama |
+| `flight_algorithm.c` | Flight state machine | Sonraki aşama |
+| `sensor_fusion.c` | Fusion mantığı | Sonraki aşama |
+| `e22_lib.c` | LoRa telemetry | Sonraki aşama |
+| `l86_gnss.c` | GNSS | Sonraki aşama |
+| `data_logger.c` | SD write buffering | SD kart bu projede yok |
+| `uart_handler.c` | UART komut ayrıştırma | Sonraki aşama |
 
-**Bilinen SKYRTOS bug'ları** (port sırasında düzelt):
-- `sensor_fusion.c` ↔ `flight_algorithm.c` circular dependency
-- Mahony gyro-only path
-- `get_offset()` blocking
+## Öncelikli yol haritası
+
+1. ✅ FreeRTOS proje iskeletini doğrula.
+2. ✅ `Application_Start()` üzerinden tek giriş noktası kur.
+3. ✅ IMU pipeline: DRDY IRQ → DMA → parse → Mahony → snapshot.
+4. ✅ Telemetry task: snapshot → UART2 DMA binary frame.
+5. BME280 driver ve altitude Kalman filtresi.
+6. GNSS task.
+7. Flight state machine.
+8. LoRa telemetry.
+
+## Şu anki kritik hatalar (old_project'ten gelen, yeni projede tekrar edilmeyecek)
+
+### Çözüldü
+* ~~Blocking boot akışı~~ — `vTaskDelay` kullanılıyor.
+* ~~ISR içinde fazla iş~~ — ISR sadece notify gönderir.
+* ~~Veri tutarsızlığı~~ — `xQueueOverwrite` ile atomik snapshot.
+* ~~Stack güvenliği yok~~ — `configCHECK_FOR_STACK_OVERFLOW 2` + hook aktif.
+* ~~Boot sırasında interrupt açmak~~ — IRQ'lar handle set edildikten sonra açılıyor.
+
+### Hâlâ açık
+* **IWDG yok** — kilitlenme durumunda sistem reset alamıyor.
+* **Fatal handler infinite loop** — `Error_Handler()` reset yerine loop yapıyor (bilinçli bırakıldı, geliştirme aşamasında debug kolaylığı için).
+* **Gyro kalibrasyonu yok** — Mahony bias hatası ile başlıyor.
+
+## Kod yazma kuralları
+
+* **Adım adım ilerle.** Tek seferde büyük refactor yok.
+* **Her adım doğrulanmadan bir sonrakine geçme.**
+* **Tek sahipli modül yaklaşımı.** Bir modülün iç state'i başka task tarafından doğrudan yazılmaz.
+* **Her yeni modül için önce arayüz, sonra implementasyon.**
+* **Comment sadece gerekli yerde.** Görünmeyen nedeni açıkla; bariz olanı tekrar etme.
+* **Identifier'lar İngilizce.** Açıklama Türkçe olabilir.
+* **`OLD_Project/` gerekli yerlerde referans alınabilir.** Aynı algoritmanın temiz versiyonu hedeflenir, birebir kopyalanmaz.
 
 ## Halil hakkında
 
-- Junior embedded geliştirici, Türkçe konuşur.
-- Bitirme projesi → jüri etkisi önemli, çalışan + okunabilir kod tercih.
-- Adım adım gitmeyi sever ("ben de anlayalım") — büyük tek seferlik
-  refactor yerine küçük doğrulanabilir parçalar.
-- Eski bare-metal denemesinden vazgeçti; HAL + MiROS hibrit
-  yaklaşımıyla devam ediyor.
+* Türkçe konuşur.
+* Junior embedded geliştirici.
+* Bitirme projesinde çalışan, anlaşılır ve jüriye anlatılabilir kod ister.
+* Büyük refactor yerine küçük, doğrulanabilir adımlarla ilerlemek daha uygundur.
 
-## Sonraki adımlar (yapılacaklar)
+## Değişmez prensip
 
-1. Board'a flash → `imuThread`'in `bmi088_init`'ten geçtiğini debugger
-   veya LED ile doğrula.
-2. DRDY → DMA → parse zincirinin dönüp `s_accel_g` / `s_gyro_dps`'yi
-   güncellediğini gör (UART ile bas veya debugger watch).
-3. Mahony quaternion (OLD_Project'ten port) → `EVT_DMA_DONE` parse'ından
-   sonra çağır.
-4. BME280 (I2C3) sürücüsü + flightTask iskeleti.
-5. Watchdog (IWDG) refresh.
+**Önce güvenilir ve anlaşılır çalışan basit sistem. Sonra genişletme.**
+
+Spagetti yok. Kernel yazmak yok. Blocking yok. Tek sahipli veri akışı var. Adım adım ilerliyoruz.
