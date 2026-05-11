@@ -37,9 +37,11 @@ sürücü) yazıyoruz. Cube'un ürettiği dosyalara minimum dokunuş:
 | `Core/Src/main.c` | HAL init + `Application_Start()` çağrısı | Evet — USER CODE 2'ye tek satır eklenmiş |
 | `Core/Src/app.c` | MiROS init, task'lar, HAL callback override'ları | Hayır |
 | `Core/Src/bmi088.c` | BMI088 sürücü (polled init + DMA read + parse) | Hayır |
+| `Core/Src/mahony.c` | 6DOF AHRS (gyro+accel füzyon, OLD'dan port) | Hayır |
 | `Core/Src/miros.c` | Kernel (priority scheduler + event flags + PendSV asm) | Hayır |
 | `Core/Inc/app.h` | Event mask define'ları, `Application_Start()` proto | Hayır |
 | `Core/Inc/bmi088.h`, `bmi088_regs.h` | Driver API + register map | Hayır |
+| `Core/Inc/mahony.h` | AHRS API (quat/euler/gyro-only flag) | Hayır |
 | `Core/Inc/miros.h`, `qassert.h` | Kernel API + assertion helper | Hayır |
 | `Core/Src/stm32f4xx_it.c` | IRQ vektörleri | Evet — **PendSV ve SysTick stubları silindi** (MiROS sağlıyor) |
 | `Core/Src/i2c.c`, `gpio.c`, ... | Peripheral init | Evet, dokunma |
@@ -51,6 +53,9 @@ sürücü) yazıyoruz. Cube'un ürettiği dosyalara minimum dokunuş:
 - **MiROS** kullanılıyor: priority scheduler (1..31, prio = index), per-thread
   event flags (`OS_evtWait` LSB-first tek bit consume eder),
   ISR-safe `OS_evtSignal_FromISR` (PRIMASK save/restore, PendSV pend).
+- **PendSV FPU-aware** (Cortex-M4F): her thread context'i `r4-r11 + EXC_RETURN`
+  + (varsa) `s16-s31` saklar. Initial frame'de `EXC_RETURN=0xFFFFFFF9`.
+  Detay için bkz. [Report.md](Report.md) §1. ARMv6-M (M0) portu kaldırıldı.
 - **HAL** kullanılıyor. Önce bare-metal denedik (i2c1.c register-level,
   EXTI manuel setup) — Halil için karmaşık geldi, **2026-05-11 pivot**
   ile HAL'e geçtik. Register-level kod silindi.
@@ -88,7 +93,7 @@ sürücü) yazıyoruz. Cube'un ürettiği dosyalara minimum dokunuş:
 | I2C3 | PA8 SCL, PC9 SDA | BME280 (sonra) |
 | EXTI3 | PB3 | BMI088 ACC INT1 (DRDY, rising) |
 | EXTI4 | PB4 | BMI088 GYRO INT3 (DRDY, rising) |
-| USART2 | DMA2 Stream5/6 | (gelecek: telemetry) |
+| USART2 | DMA1 Stream6 (TX), Stream5 (RX) | telemetry — Mahony çıktısı (scaled int, 100 Hz) |
 | USART6 / UART4 | DMA | (gelecek) |
 | SPI1, SPI3 | — | (gelecek: SD, W25 flash) |
 | TIM2 | — | (gelecek) |
@@ -113,13 +118,21 @@ EXTI3 (ACC DRDY)  →  HAL_GPIO_EXTI_Callback  →  POST EVT_ACCEL_DRDY
 EXTI4 (GYRO DRDY) →  HAL_GPIO_EXTI_Callback  →  POST EVT_GYRO_DRDY
 imuThread.evtWait → DRDY → HAL_I2C_Mem_Read_DMA(6 bytes)
 DMA1_Stream0 IRQ  →  HAL_I2C_MemRxCpltCallback  →  POST EVT_DMA_DONE
-imuThread.evtWait → DMA_DONE → parse + (TODO) Mahony update
+imuThread.evtWait → DMA_DONE → parse → s_have_{accel,gyro} fresh flag
+   if both fresh → mahony_update(dt=1/400 s) → telem decimator (÷4)
+                   → UART2 DMA TX (drop on busy, ~100 Hz)
 ```
 
 Tek I2C bus + tek DMA stream var → DRDY'ler serileştirilir.
 `app.c`'deki `s_phase` (IDLE / READ_ACCEL / READ_GYRO) state machine
 in-flight transfer'i izler, `s_pending_accel/gyro` bekleyen DRDY'leri
 tutar, `imu_kick_next()` DMA done'da bekleyeni başlatır.
+
+Telemetri formatı (ASCII, scaled int — float-printf bağımlılığı yok):
+`q,<w*10000>,<x*10000>,<y*10000>,<z*10000>,e,<r*100>,<p*100>,<y*100>,m,<gmode>\r\n`
+NUCLEO ST-LINK VCP üzerinden 115200 baud (PA2/PA3 → ST-LINK USB).
+Önceki TX hala uçuyorsa o örnek düşürülür (block etmek imuThread'i
+durdurur, telemetri için kabul edilemez).
 
 ## Build
 
@@ -139,7 +152,7 @@ Kopyalamak yerine algoritmik mantığı çıkarıp MiROS+HAL'e uyarla.
 
 | Dosya | İçerik | Port önceliği |
 | --- | --- | --- |
-| `quaternion.c` / `queternion.c` | Mahony quaternion update — typo'lu iki versiyon var, hangisi doğru kontrol et | Yüksek — imuThread parse'ından sonra çağrılacak |
+| ~~`queternion.c`~~ | Mahony quaternion update | **Port edildi 2026-05-11** → `mahony.c`. Tek versiyon vardı (typo'lu). FPU-friendly versiyona temizlendi, BMI_sensor coupling kaldırıldı, gyro-only mode + adaptive Kp/Ki korundu |
 | `kalman.c` | Altitude Kalman filter | Yüksek — flightTask için |
 | `bme280.c` | Basınç/sıcaklık sürücü (I2C3) | Yüksek — flightTask DRDY'si |
 | `flight_algorithm.c` | Uçuş fazı state machine (boost/coast/apogee/descent/touchdown) | Orta |
@@ -166,11 +179,15 @@ Kopyalamak yerine algoritmik mantığı çıkarıp MiROS+HAL'e uyarla.
 
 ## Sonraki adımlar (yapılacaklar)
 
-1. Board'a flash → `imuThread`'in `bmi088_init`'ten geçtiğini debugger
-   veya LED ile doğrula.
-2. DRDY → DMA → parse zincirinin dönüp `s_accel_g` / `s_gyro_dps`'yi
-   güncellediğini gör (UART ile bas veya debugger watch).
-3. Mahony quaternion (OLD_Project'ten port) → `EVT_DMA_DONE` parse'ından
-   sonra çağır.
-4. BME280 (I2C3) sürücüsü + flightTask iskeleti.
-5. Watchdog (IWDG) refresh.
+1. ~~Board'a flash → `imuThread`'in `bmi088_init`'ten geçtiğini doğrula.~~
+2. ~~DRDY → DMA → parse zinciri ve Mahony çalıştığını UART üzerinden gör.~~
+3. ~~Mahony quaternion port + `EVT_DMA_DONE` zincirine bağlama.~~
+4. **Mahony doğrulaması:** ST-LINK VCP @ 115200 baud, terminal aç,
+   "q,...,e,...,m,0" satırlarının aktığını gör; board'u el ile döndür,
+   roll/pitch/yaw mantıklı değişmeli. Yüksek-g (sallayarak) `m,1`
+   olmalı (gyro-only mode kicked in).
+5. Microsecond timer (TIM2) — gerçek dt için. Şu an `MAHONY_DT_S` sabit
+   1/400 s, gerçek inter-sample süre değil. ODR drift'ten etkilenir.
+6. BME280 (I2C3) sürücüsü + flightTask iskeleti.
+7. Kalman altitude filter (OLD/kalman.c port) — flightTask için.
+8. Watchdog (IWDG) refresh — imuThread içinden periyodik kick.

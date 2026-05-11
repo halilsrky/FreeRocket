@@ -21,8 +21,12 @@
 #include "app.h"
 #include "main.h"
 #include "i2c.h"
+#include "usart.h"
 #include "bmi088.h"
+#include "mahony.h"
 #include "qassert.h"
+#include <stdio.h>
+#include <string.h>
 
 /* ---- Thread storage ---------------------------------------------------- */
 
@@ -58,7 +62,54 @@ static volatile uint8_t s_pending_gyro;
 static bmi088_vec3_t s_accel_g;
 static bmi088_vec3_t s_gyro_dps;
 
+/* Mahony pairing: a fusion step needs one fresh accel AND one fresh gyro.
+ * Halves arrive on separate DRDYs, so we set the flag in the parse branch
+ * and consume both when the second one lands. */
+static uint8_t s_have_accel;
+static uint8_t s_have_gyro;
+
+/* dt for Mahony. BMI088 acc ODR = 400 Hz, gyro at the matching 400 Hz
+ * setting; assuming equal-rate pairing, dt = 1/400 = 2.5 ms. TODO: replace
+ * with a microsecond timer once TIM2 is wired up. */
+#define MAHONY_DT_S         (1.0f / 400.0f)
+
+/* UART2 telemetry: format strings need printf, but we keep all values
+ * scaled-int to skip the libc float-printf dependency. Quaternion x10000,
+ * Euler x100, gyro-only flag as 0/1. One line per send, drop on busy. */
+#define TELEM_DECIMATE      4U      /* every 4th Mahony update -> 100 Hz */
+static char    s_telem_buf[80];
+static uint8_t s_telem_div;
+
 /* ---- imuTask body ------------------------------------------------------ */
+
+/* Try to push one telemetry line over UART2 via DMA. Drops the sample
+ * silently if the previous transfer is still in flight — for streaming
+ * telemetry losing one packet is preferable to blocking the imuThread. */
+static void telem_try_send(void)
+{
+    if (huart2.gState != HAL_UART_STATE_READY) {
+        return;
+    }
+
+    mahony_quat_t  q = mahony_get_quat();
+    mahony_euler_t e = mahony_get_euler();
+
+    int16_t qw = (int16_t)(q.w * 10000.0f);
+    int16_t qx = (int16_t)(q.x * 10000.0f);
+    int16_t qy = (int16_t)(q.y * 10000.0f);
+    int16_t qz = (int16_t)(q.z * 10000.0f);
+    int16_t er = (int16_t)(e.roll  * 100.0f);
+    int16_t ep = (int16_t)(e.pitch * 100.0f);
+    int16_t ey = (int16_t)(e.yaw   * 100.0f);
+    uint8_t gm = mahony_is_gyro_only() ? 1U : 0U;
+
+    int n = snprintf(s_telem_buf, sizeof(s_telem_buf),
+                     "q,%d,%d,%d,%d,e,%d,%d,%d,m,%u\r\n",
+                     qw, qx, qy, qz, er, ep, ey, (unsigned)gm);
+    if (n > 0 && (size_t)n < sizeof(s_telem_buf)) {
+        (void)HAL_UART_Transmit_DMA(&huart2, (uint8_t *)s_telem_buf, (uint16_t)n);
+    }
+}
 
 static void imu_kick_next(void)
 {
@@ -82,6 +133,7 @@ static void imu_kick_next(void)
 static void main_imuThread(void)
 {
     bmi088_bind(&hi2c1);
+    mahony_reset();
 
     bmi088_config_t cfg = {
         .acc_range      = BMI088_ACC_RANGE_24G,
@@ -114,11 +166,26 @@ static void main_imuThread(void)
         case EVT_DMA_DONE:
             if (s_phase == IMU_READ_ACCEL) {
                 bmi088_parse_accel(s_raw_accel, &s_accel_g);
+                s_have_accel = 1U;
             } else if (s_phase == IMU_READ_GYRO) {
                 bmi088_parse_gyro(s_raw_gyro, &s_gyro_dps);
+                s_have_gyro = 1U;
             }
             s_phase = IMU_IDLE;
-            /* TODO: Mahony update here once both halves are fresh. */
+
+            /* Both halves fresh -> one Mahony step + throttled telemetry. */
+            if (s_have_accel && s_have_gyro) {
+                s_have_accel = 0U;
+                s_have_gyro  = 0U;
+                mahony_update(s_gyro_dps.x, s_gyro_dps.y, s_gyro_dps.z,
+                              s_accel_g.x, s_accel_g.y, s_accel_g.z,
+                              MAHONY_DT_S);
+                if (++s_telem_div >= TELEM_DECIMATE) {
+                    s_telem_div = 0U;
+                    telem_try_send();
+                }
+            }
+
             imu_kick_next();
             break;
 
@@ -197,11 +264,6 @@ _Noreturn void Q_onAssert(char const * const module, int const id)
 void Application_Start(void)
 {
     (void)idleThreadStack;  /* keep symbol — currently storage only */
-
-    /* MiROS PendSV only saves r4-r11, not FPU registers. Disabling automatic
-     * FPU context preservation (ASPEN+LSPEN=0) keeps exception frames basic
-     * (32 bytes) even when float is used. Safe as long as no ISR uses FPU. */
-    FPU->FPCCR &= ~(FPU_FPCCR_ASPEN_Msk | FPU_FPCCR_LSPEN_Msk);
 
     OS_init(stack_idle, sizeof(stack_idle));
 

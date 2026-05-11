@@ -79,55 +79,98 @@ var, float yok. Eğer init başarısız olup thread sonsuz delay döngüsüne
 girerse parse hiç çağrılmaz, `FPCA=1` olmaz, fault gelmez. Init geçtikten
 sonra ilk parse + sonraki context switch arasında oluşur.
 
-### Uygulanan çözüm (geçici)
+### İlk hızlı çözüm (denendi, sonra kaldırıldı)
 
-`Application_Start`'ta MiROS başlatılmadan önce:
+Bug'ı bulduktan hemen sonra geçici çözüm olarak `Application_Start`'a
+şunu koymuştuk:
 
 ```c
 FPU->FPCCR &= ~(FPU_FPCCR_ASPEN_Msk | FPU_FPCCR_LSPEN_Msk);
 ```
 
-- `ASPEN=0`: HW artık `FPCA`'yı otomatik set etmez. Exception giriş
-  anında frame her zaman basic (32 byte) olur.
-- `LSPEN=0`: Lazy stacking devre dışı (ASPEN=0 zaten yeterli ama
-  defensive).
-- FPU compute hala aktif: CPACR'a dokunmuyoruz, `float` operasyonları
-  HW FPU üzerinde koşmaya devam eder.
+`ASPEN=0` HW'in `FPCA` bit'ini otomatik set etmesini durdurur, frame
+her zaman basic (32 byte) olur, MiROS'un basic-only assumption'ı
+geçerli kalır.
 
-**Bu çözüm yalnız aşağıdaki üç koşul aynı anda sağlanırsa güvenli:**
+**Bu çözümün geçerliliği üç koşula bağlıydı** (hepsi aynı anda):
 
 1. Yalnız tek bir user thread float kullanır (`imuThread`).
-2. Hiçbir ISR float / DSP çağırmaz (SysTick, EXTI3/4, DMA1_Stream0,
-   I2C1_EV/ER, TIM6 — hepsi integer).
-3. `arm_math.h` / CMSIS-DSP çağıran callback / HAL wrapper yok.
+2. Hiçbir ISR float / DSP çağırmaz.
+3. `arm_math.h` / CMSIS-DSP çağıran callback yok.
 
-Bu koşullardan biri ihlal edilirse s0-s15 / FPSCR register'ları
-context switch arasında corrupt olabilir.
+Koşullardan biri ihlal edilince s0-s15 / FPSCR register'ları context
+switch arasında corrupt olabilirdi. `flightTask` portu, Mahony /
+Kalman entegrasyonu, ileride CMSIS-DSP kullanımı — hepsi bu koşulları
+zorlayacak. Bu yüzden geçici fix kaldırılıp proper fix uygulandı.
 
-### Proper fix (TODO — ikinci float thread eklendiğinde)
+### Proper fix (uygulandı — 2026-05-11)
 
-MiROS PendSV'yi FPU-aware yap. Kritik nokta yalnız register save değil,
-**her thread'in kendi EXC_RETURN frame-type bit'inin TCB stack'inde
-saklanması**:
+İki dosya değişti: `Cube/Core/Src/miros.c` (PendSV + OSThread_start) ve
+`Cube/Core/Src/app.c` (geçici FPCCR satırı kaldırıldı).
 
-```asm
-PendSV save:
-  PUSH {r4-r11, lr}          ; lr = EXC_RETURN — frame type bilgisi bu word'de
-  TST  lr, #0x10             ; bit 4 = 0  → extended frame
-  IT   EQ
-  VSTMDBEQ sp!, {s16-s31}    ; s0-s15 + FPSCR HW frame'inde, sadece yüksek 16'sı
+**Kritik kavramsal düzeltme:** problem yalnız "FPU register'larını
+kaydetmemek" değil — esas mesele **frame-type bilgisinin (basic vs
+extended) thread başına saklanması**. HW, exception return'de `BX lr`
+ile gelen `EXC_RETURN` değerinin 4. bit'ine bakıp basic mi extended mi
+pop edeceğine karar veriyor. Bu bit context switch boyunca thread'le
+beraber taşınmazsa, FPU kullanan A thread'inden FPU kullanmayan B
+thread'ine geçişte HW yine extended pop etmeye çalışır → crash.
 
-PendSV restore:
-  POP  {r4-r11, lr}          ; bu thread'in kendi EXC_RETURN'ü geri
-  TST  lr, #0x10
-  IT   EQ
-  VLDMIAEQ sp!, {s16-s31}
-  BX   lr                    ; HW frame tipini buradan öğrenir
-```
+**Çözüm:**
 
-`OSThread_start` initial frame'e bir word eklenmeli:
-`*(--sp) = 0xFFFFFFF9U;` — yeni thread henüz FPU kullanmadığı için
-basic frame, MSP, Thread mode EXC_RETURN değeri.
+1. `OSThread_start`: initial stack frame'e bir word eklendi:
+   `*(--sp) = 0xFFFFFFF9U;` — yeni thread henüz FPU kullanmadığı için
+   basic frame EXC_RETURN değeri. Frame artık 16 değil 17 word
+   (sw frame 9 word: r4-r11 + EXC_RETURN; hw frame 8 word).
+
+2. `PendSV_Handler`: `PUSH/POP {r4-r11}` → `PUSH/POP {r4-r11, lr}`
+   yapıldı. lr (yani EXC_RETURN) artık thread context'inin parçası.
+   Bunun etrafına FPU register save/restore eklendi:
+
+   ```
+   ; save outgoing thread:
+   TST lr, #0x10              ; bit 4 = 0 → extended frame kullanıldı
+   IT  EQ
+   VSTMDBEQ sp!, {s16-s31}    ; HW zaten s0-s15 + FPSCR'i koruyor
+   PUSH {r4-r11, lr}
+
+   ; restore incoming thread:
+   POP {r4-r11, lr}           ; bu thread'in kendi EXC_RETURN'ü
+   TST lr, #0x10
+   IT  EQ
+   VLDMIAEQ sp!, {s16-s31}
+   BX lr                      ; HW basic/extended doğru pop ediyor
+   ```
+
+3. Bu değişiklikle birlikte M0 (ARMv6-M) branch'leri kaldırıldı —
+   PendSV artık yalnız Cortex-M4F üzerinde çalışıyor. IT/VSTMDB/VLDMIA
+   instruction'ları M0'da yok. M0 portu gerekirse ileride FPU
+   olmayan bir versiyon yazılır.
+
+4. `app.c`'deki geçici `FPCCR` satırı kaldırıldı; CPACR (Cube
+   tarafından `SystemInit`'te set ediliyor) ve `FPCCR.ASPEN/LSPEN`
+   default değerlerinde, MiROS extended frame'leri kendisi yönetiyor.
+
+**Doğrulama:** build temiz, flash atıldı, `bmi088_parse_accel` float
+yolundan geçildikten sonra context switch'lerde HardFault gelmiyor.
+
+### Rapor için çıkarımlar
+
+- Cortex-M exception frame iki form alır (basic / extended). RTOS
+  context switch yazarken her iki formu da bilmek şarttır.
+- HW'in stack üzerinde tuttuğu metadata (`EXC_RETURN`'ün frame-type
+  bit'i) thread context'inin **bir parçasıdır**; salt callee-saved
+  register'ları (r4-r11) kaydetmek yetmez. Bu nokta birçok hobi RTOS
+  port'unda gözden kaçar.
+- Intermittent bug'lar genelde "ilk kez X yapıldıktan sonra Y olunca"
+  pattern'inden gelir. INVSTATE + SRAM-domain PC kombinasyonu RTOS'larda
+  klasik FPU/PendSV smell'idir; doğru ilk hipotez bu olmalı.
+- Cube/HAL'in default'ları (FPU on, ASPEN/LSPEN on) bare-metal/single-
+  threaded uygulama için tasarlanmış; custom kernel ile birleşince
+  hidden assumption oluyor.
+- "Geçici fix" + "proper fix" ikilisi: önce minimal değişiklikle
+  semptomu durdur, sonra kök nedeni doğru çöz. Geçici fix'in geçerlilik
+  koşullarını yazılı bırakmak, ne zaman yetmeyeceğini bilmemizi sağladı.
 
 ### Rapor için çıkarımlar
 

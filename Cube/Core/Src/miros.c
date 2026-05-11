@@ -125,6 +125,12 @@ void OSThread_start(
     *(--sp) = 0x00000002U; /* R2  */
     *(--sp) = 0x00000001U; /* R1  */
     *(--sp) = 0x00000000U; /* R0  */
+    /* EXC_RETURN slot — per-thread frame-type bit. Initial value is
+     * 0xFFFFFFF9 (Thread mode, MSP, basic frame). PendSV pops this into
+     * lr on context restore, so hardware unstacks the right size frame
+     * (basic 32 B vs extended 104 B) for THIS thread, not whichever
+     * frame type was last pushed by an unrelated exception. */
+    *(--sp) = 0xFFFFFFF9U; /* EXC_RETURN */
     *(--sp) = 0x0000000BU; /* R11 */
     *(--sp) = 0x0000000AU; /* R10 */
     *(--sp) = 0x00000009U; /* R9 */
@@ -218,38 +224,45 @@ void OS_evtSignal_FromISR(OSThread *me, uint32_t mask) {
 
 /* ---- PendSV context switch (unchanged) ---------------------------------- */
 
+/* PendSV context switch — FPU-aware (Cortex-M4F / ARMv7E-M).
+ *
+ * Per-thread state saved on stack (lowest addr first):
+ *   [r4 .. r11]              callee-saved GP registers   (8 words)
+ *   [EXC_RETURN]             frame-type bit lives here   (1 word)
+ *   [s16 .. s31]             only if EXC_RETURN bit 4=0  (16 words, optional)
+ *
+ * The hardware exception frame (basic 8w or extended 26w) sits above this
+ * on the same stack — written by the CPU on exception entry, popped by
+ * BX lr on exception return. Bit 4 of EXC_RETURN tells the CPU which
+ * size to pop; we MUST restore the right value or the CPU walks off the
+ * end of a basic frame trying to unstack 26 words → garbage PC → fault.
+ */
 __attribute__ ((naked))
 void PendSV_Handler(void) {
 __asm volatile (
-    /* __disable_irq(); */
     "  CPSID         I                 \n"
 
-    /* if (OS_curr != (OSThread *)0) { */
+    /* First switch: OS_curr is NULL, nothing to save. */
     "  LDR           r1,=OS_curr       \n"
     "  LDR           r1,[r1,#0x00]     \n"
     "  CMP           r1,#0             \n"
     "  BEQ           PendSV_restore    \n"
 
-    /*     push registers r4-r11 on the stack */
-#if (__ARM_ARCH == 6)               // if ARMv6-M...
-    "  SUB           sp,sp,#(8*4)     \n" // make room for 8 registers r4-r11
-    "  MOV           r0,sp            \n" // r0 := temporary stack pointer
-    "  STMIA         r0!,{r4-r7}      \n" // save the low registers
-    "  MOV           r4,r8            \n" // move the high registers to low registers...
-    "  MOV           r5,r9            \n"
-    "  MOV           r6,r10           \n"
-    "  MOV           r7,r11           \n"
-    "  STMIA         r0!,{r4-r7}      \n" // save the high registers
-#else                               // ARMv7-M or higher
-    "  PUSH          {r4-r11}          \n"
-#endif
+    /* If outgoing thread had FPCA=1, HW pushed extended frame (s0-s15
+     * + FPSCR + reserved). Save the upper half (s16-s31) by hand. */
+    "  TST           lr, #0x10         \n"
+    "  IT            EQ                \n"
+    "  VSTMDBEQ      sp!, {s16-s31}    \n"
 
-    /*     OS_curr->sp = sp; */
+    /* Save callee-saved + EXC_RETURN. Stacking lr here means each
+     * thread carries its own frame-type bit through context switches. */
+    "  PUSH          {r4-r11, lr}      \n"
+
+    /* OS_curr->sp = sp; */
     "  LDR           r1,=OS_curr       \n"
     "  LDR           r1,[r1,#0x00]     \n"
     "  MOV           r0,sp             \n"
     "  STR           r0,[r1,#0x00]     \n"
-    /* } */
 
     "PendSV_restore:                   \n"
     /* sp = OS_next->sp; */
@@ -264,26 +277,18 @@ __asm volatile (
     "  LDR           r2,=OS_curr       \n"
     "  STR           r1,[r2,#0x00]     \n"
 
-    /* pop registers r4-r11 */
-#if (__ARM_ARCH == 6)
-    "  MOV           r0,sp             \n"
-    "  MOV           r2,r0             \n"
-    "  ADDS          r2,r2,#(4*4)      \n"
-    "  LDMIA         r2!,{r4-r7}       \n"
-    "  MOV           r8,r4             \n"
-    "  MOV           r9,r5             \n"
-    "  MOV           r10,r6            \n"
-    "  MOV           r11,r7            \n"
-    "  LDMIA         r0!,{r4-r7}       \n"
-    "  ADD           sp,sp,#(8*4)      \n"
-#else
-    "  POP           {r4-r11}          \n"
-#endif
+    /* Restore callee-saved + EXC_RETURN. After this, lr is the
+     * incoming thread's own EXC_RETURN — basic or extended. */
+    "  POP           {r4-r11, lr}      \n"
 
-    /* __enable_irq(); */
+    /* If incoming thread saved an extended frame, restore s16-s31. */
+    "  TST           lr, #0x10         \n"
+    "  IT            EQ                \n"
+    "  VLDMIAEQ      sp!, {s16-s31}    \n"
+
     "  CPSIE         I                 \n"
 
-    /* return to the next thread */
+    /* HW unstacks the matching basic/extended HW frame from lr's bit 4. */
     "  BX            lr                \n"
     );
 }
