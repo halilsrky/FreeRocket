@@ -21,6 +21,9 @@ set(MX_Include_Dirs
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/Third_Party/FatFs/src
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Drivers/CMSIS/Device/ST/STM32F4xx/Include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Drivers/CMSIS/Include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/SEGGER/Config
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/SEGGER/SEGGER
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/SEGGER/OS
 )
 
 # STM32CubeMX generated application sources
@@ -72,6 +75,12 @@ set(STM32_Drivers_Src
 
 # Drivers Midllewares
 
+set(SEGGER_Src
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/SEGGER/SEGGER/SEGGER_RTT.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/SEGGER/SEGGER/SEGGER_SYSVIEW.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/SEGGER/Config/SEGGER_SYSVIEW_Config_FreeRTOS.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/SEGGER/OS/SEGGER_SYSVIEW_FreeRTOS.c
+)
 
 set(FreeRTOS_Src
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/Third_Party/FreeRTOS/Source/croutine.c
@@ -97,12 +106,12 @@ set(MX_LINK_DIRS
 
 )
 # Project static libraries
-set(MX_LINK_LIBS 
+set(MX_LINK_LIBS
     STM32_Drivers
     ${TOOLCHAIN_LINK_LIBRARIES}
     FreeRTOS
-	FatFs
-	
+    FatFs
+    SEGGER
 )
 # Interface library for includes and symbols
 add_library(stm32cubemx INTERFACE)
@@ -124,6 +133,11 @@ target_link_libraries(FreeRTOS PUBLIC stm32cubemx)
 add_library(FatFs OBJECT)
 target_sources(FatFs PRIVATE ${FatFs_Src})
 target_link_libraries(FatFs PUBLIC stm32cubemx)
+
+# Create SEGGER SystemView static library
+add_library(SEGGER OBJECT)
+target_sources(SEGGER PRIVATE ${SEGGER_Src})
+target_link_libraries(SEGGER PUBLIC stm32cubemx)
 
 # Add STM32CubeMX generated application sources to the project
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE ${MX_Application_Src})

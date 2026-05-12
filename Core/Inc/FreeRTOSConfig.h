@@ -165,6 +165,7 @@ standard names. */
 
 /* USER CODE BEGIN Defines */
 #define configCHECK_FOR_STACK_OVERFLOW   2
+#include "SEGGER_SYSVIEW_FreeRTOS.h"  // must be last — overrides FreeRTOS trace macros
 /* USER CODE END Defines */
 
 #endif /* FREERTOS_CONFIG_H */
