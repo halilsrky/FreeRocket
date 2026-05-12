@@ -1,12 +1,12 @@
 # SKYRTOS — STM32F446 NUCLEO Flight Computer
 
-Halil'in bitirme projesi. BMI088 IMU + BME280 baro + GNSS + LoRa  içeren roket flight computer yazılımı.
+Halil'in bitirme projesi. BMI088 IMU + BME280 baro + GNSS + LoRa içeren roket flight computer yazılımı.
 
 **Karar değişti:** Kendi mini RTOS kernel'ımızı yazmayacağız.
 
 * Neden: stack overflow, hard fault, race condition, scheduler edge-case ve ISR/priority hataları proje hızını ve güvenilirliğini bozar.
 * Hedef: **STM32CubeIDE ile eklenmiş FreeRTOS tabanlı, temiz, okunabilir, adım adım ilerleyen bir mimari**.
-* Bu proje artık “kernel yazma” projesi değil; **uçuş bilgisayarı mimarisi ve güvenilirlik projesi**.
+* Bu proje artık "kernel yazma" projesi değil; **uçuş bilgisayarı mimarisi ve güvenilirlik projesi**.
 
 ## Klasör yapısı
 
@@ -17,106 +17,128 @@ FreeRtos_project/       ← aktif proje (STM32CubeIDE .ioc + HAL + FreeRTOS)
 └── CLAUDE.md           ← bu dosya
 ```
 
-**`old_project/`**** asla silinmeyecek.** Buradan algoritma ve sürücü mantığı port edilecek; doğrudan kopyala-yapıştır değil, okuyup sadeleştirerek uyarlanacak.
+**`OLD_Project/` asla silinmeyecek.** Buradan algoritma ve sürücü mantığı port edilecek; doğrudan kopyala-yapıştır değil, okuyup sadeleştirerek uyarlanacak.
 
-**`Report.md`** — bitirme raporu için ham teknik notlar deposu. Sadece rapor değeri olan olaylar yazılır: kök neden, teşhis, çözüm, tekrar etmemesi için alınan önlem. Sıradan refactor notları buraya girmez. Bu dosya bitirme projesi raporunda kullanılacak teknik notları, karşılaşılan zorlukları ve çözümleri toplar kısa kısa notlarla madde madde sıralar.
+**`Report.md`** — bitirme raporu için ham teknik notlar deposu. Sadece rapor değeri olan olaylar yazılır: kök neden, teşhis, çözüm, tekrar etmemesi için alınan önlem. Sıradan refactor notları buraya girmez.
 
-## Aktif proje (`FreeRtos_project/`)
+## Aktif proje — mevcut dosya yapısı
 
-Aktif proje içinde şu an **sadece CubeMX ile üretilen peripheral init dosyaları** ve **FreeRTOS middleware** var. Sensör driver'ları henüz eklenmiş değil; önce sağlam iskelet kurulacak, sonra tek tek driver eklenecek.
+### CubeMX üretilen (dokunma)
 
-| Dosya                                                   | Görev                                    | Not                                        |
-| ------------------------------------------------------- | ---------------------------------------- | ------------------------------------------ |
-| `Core/Src/main.c`                                       | HAL init + `Application_Start()` çağrısı | Sadece USER CODE bloğuna tek giriş noktası |
-|                                                         |                                          |                                            |
-| `Core/Src/stm32f4xx_it.c`                               | IRQ vektörleri                           | Cube üretir                                |
-| `Core/Src/gpio.c`, `i2c.c`, `dma.c`, `usart.c`, `tim.c` | Peripheral init                          | Cube üretir; mümkün olduğunca dokunma      |
-| `Middlewares/Third_Party/FreeRTOS/`                     | FreeRTOS middleware                      | Hazır kullanılır                           |
+| Dosya | Görev |
+| ----- | ----- |
+| `Core/Src/main.c` | HAL init → `osKernelStart()` |
+| `Core/Src/freertos.c` | `MX_FREERTOS_Init()` → `Application_Start()` |
+| `Core/Src/gpio.c`, `i2c.c`, `dma.c`, `usart.c`, `tim.c` | Peripheral init |
+| `Core/Src/stm32f4xx_it.c` | IRQ vektörleri |
+| `Middlewares/Third_Party/FreeRTOS/` | FreeRTOS middleware |
 
-### Şu an kapsam dışı
+### Uygulama katmanı (bizim yazdığımız)
 
-* BMI088 sürücüsü yok
-* BME280 sürücüsü yok
-* GNSS yok
-* LoRa telemetry yok
-* Flight algorithm yok
-* Kalman / Mahony henüz port edilmemiş olabilir
+| Dosya | Görev | Durum |
+| ----- | ----- | ----- |
+| `Core/Src/app.c` / `Inc/app.h` | Tek giriş noktası — task'ları oluşturur | ✅ Tamamlandı |
+| `Core/Src/bmi088.c` / `Inc/bmi088.h` | BMI088 driver: init, config, DMA başlat, parse | ✅ Tamamlandı |
+| `Core/Inc/bmi088_defs.h` | Register adresleri ve sabitler | ✅ Tamamlandı |
+| `Core/Src/mahony.c` / `Inc/mahony.h` | Mahony AHRS filtresi (6DOF) | ✅ Tamamlandı |
+| `Core/Src/imu_task.c` / `Inc/imu_task.h` | IMU pipeline task | ✅ Tamamlandı |
+| `Core/Inc/imu_snapshot.h` | `imu_snapshot_t` struct + `imu_snapshot_peek()` | ✅ Tamamlandı |
+| `Core/Src/telemetry_task.c` / `Inc/telemetry_task.h` | UART2 DMA binary telemetry (50 Hz) | ✅ Tamamlandı |
 
-Önce proje iskeleti, task modeli ve temiz giriş noktası kurulacak. Sensörler daha sonra eklenir.
+### Henüz kapsam dışı
+
+* BME280 baro driver
+* GNSS (L86)
+* LoRa (E22)
+* Flight state machine
+* Kalman altitude filtresi
+* IWDG watchdog
+* Gyro offset kalibrasyonu
+* Eksen haritalaması (PCB montajına göre ayarlanacak)
 
 ## Mimari kararlar
 
 * **FreeRTOS kullanılıyor.** Kendi kernel'ımız yok.
 * **AO / QP / ikinci bir scheduler yok.** Tek yürütme modeli FreeRTOS.
-* **Mimari tam event-driven olmak zorunda değil.** Bu projede öncelik deterministik ve okunabilir FreeRTOS akışı. Gerekli yerlerde event/flag kullanılabilir ama her şeyi event-driven yapmaya zorlamayacağız.
-* **Blocking çağrılar minimumda tutulacak.** `HAL_Delay`, polling loop ve sonsuz beklemeler yok. Bu aşamada ADC/SD olmadığı için `f_write` gibi başlıklar da kapsam dışı.
-* **ISR içinde iş minimum olacak.** ISR sadece event set eder, DMA başlatır veya kısa state güncellemesi yapar.
-* **Watchdog (IWDG) şart.** Flight computer reset alabilmeli, kilitlenmemeli.
-* **Veri sahipliği tek kaynaklı olacak.** Aynı sensör verisi birden fazla task tarafından farklı snapshot olarak tüketilmeyecek.
-* **Synchronization primitive kullanımı kontrollü olacak:**
+* **Blocking çağrılar minimumda.** `HAL_Delay` yok; init sırasında `vTaskDelay` kullanılıyor.
+* **ISR içinde iş minimum.** ISR sadece `xTaskNotifyFromISR` çağırır, başka iş yapmaz.
+* **Veri sahipliği tek kaynaklı.** IMU task kendi state'ini tek başına yönetir; pointer paylaşmaz.
+* **Watchdog (IWDG) şart.** Henüz eklenmedi — öncelikli sonraki adım.
+* **Synchronization primitif seçimi:**
+  * ISR → task: `task notification` (`xTaskNotifyFromISR` + `xTaskNotifyWait`)
+  * Task → task (snapshot): `queue depth=1` + `xQueueOverwrite` / `xQueuePeek`
+  * Mutex: IMU path'inde kullanılmıyor
+  * Semaphore: kullanılmıyor
+* **Mode geçişleri explicit state machine ile yönetilecek.**
 
-  * ISR → task iletişimi için öncelikli mekanizma `task notification`
-  * Queue yalnızca event, command veya immutable snapshot taşımak için kullanılacak
-  * Aynı sensör verisi birden fazla task tarafından ayrı snapshot olarak tüketilmeyecek
-  * Mutex yalnızca gerçekten kaçınılmaz paylaşılan kaynak varsa kullanılacak
-  * Semaphore kullanımı minimum tutulacak; notification tercih edilecek
-* **Mode geçişleri explicit state machine ile yönetilecek.** Gizli global flag karmaşası olmayacak.
-* old_project/``** referans olarak kullanılacak.** Oradaki gerekli driver ve mantıklar port edilecek; eski mimari aynen taşınmayacak.
+## IMU pipeline
 
+```
+EXTI3 (ACC DRDY, PB3)  ──→ HAL_GPIO_EXTI_Callback
+EXTI4 (GYRO DRDY, PB4) ──→ HAL_GPIO_EXTI_Callback
+                                    │
+                        xTaskNotifyFromISR (NOTIFY_ACC/GYRO_DRDY)
+                                    │
+                              imuTask wakes
+                                    │
+                    bmi088_start_accel_dma / bmi088_start_gyro_dma
+                      (I2C1 paylaşımlı — dma_state makinesi sıralar)
+                                    │
+                        HAL_I2C_MemRxCpltCallback
+                                    │
+                        xTaskNotifyFromISR (NOTIFY_DMA_DONE)
+                                    │
+                              imuTask wakes
+                                    │
+                        bmi088_parse_accel / bmi088_parse_gyro
+                                    │
+                       acc_fresh && gyro_fresh?
+                                    │
+                           mahony_update()
+                                    │
+                       xQueueOverwrite(s_snapshot_q, &snap)
+```
 
-## Şu anki kritik hatalar
+## Telemetry pipeline
 
-Bu başlık, old_project'teki SKYRTOS döneminden gelen hataların nedenlerinden oluşur. Yeni projede bunlar tekrar edilmeyecek.
+```
+telemetryTask (50 Hz, osPriorityBelowNormal)
+    │
+    ├── vTaskDelayUntil(20 ms)
+    ├── imu_snapshot_peek(&snap)      ← kopyalar, bloklamaz
+    ├── frame doldur (44 byte binary)
+    ├── HAL_UART_Transmit_DMA(&huart2, ...)
+    └── xTaskNotifyWait(TX_DONE, 20 ms timeout)
+         │
+    HAL_UART_TxCpltCallback → xTaskNotifyFromISR
+```
 
-### Kritik
+**Frame formatı (44 byte, little-endian):**
+```
+[AA 55][ts_ms:u32][ax:f][ay:f][az:f][gx:f][gy:f][gz:f][roll:f][pitch:f][yaw:f][crc:u16]
+```
+Python: `struct.unpack('<2sI3f3f3fH', data)`
 
-* **Blocking boot akışı:** sensör init sırasında uzun `HAL_Delay`, timeout loop ve kalibrasyon bloklaması boot'u gereksiz uzatıyor.
-* **ISR içinde fazla iş:** EXTI callback içinde sadece işaretleme değil, transfer başlatma ve ek mantık var.
-* **Veri tutarsızlığı:** accel ve gyro ayrı anlarda işlenip tek sample gibi publish ediliyor.
-* **Fatal handler:** `Error_Handler()` uçuşta sistemi sonsuz döngüde bırakmamalı.
-* **Stack güvenliği yok:** stack overflow tespiti ve heap hatası kontrolü yoksa sessiz çöküş olur.
-* **Mode karmaşası:** mode değişimi state machine yerine dağınık if blokları ile yönetilirse reset/re-init bug'ları doğar.
+## Task modeli
 
-### Orta önem
-
-* **Blocking UART / blocking polling** task jitter üretir.
-* **Global değişkenlerle paylaşılan state** race condition üretir.
-* **Boot sırasında interrupt açmak** initialization sırası problemleri yaratır.
-
-### Sonuç
-
-Bu hatalar gösterdi ki sorun “RTOS kullanmak” değil; **mimarinin dağınık olması**. Yeni projede bu yüzden kernel yazma yoluna gidilmeyecek.
-
-## Kod yazma kuralları
-
-* **Adım adım ilerle.** Tek seferde büyük refactor yok.
-* **Önce çalışan minimal iskelet**, sonra tek sensör, sonra bir sonraki modül.
-* **Her adım doğrulanmadan bir sonrakine geçme.**
-* **Önce tek veri akışı, tek task.** Sonra genişlet.
-* **Tek sahipli modül yaklaşımı kullan.** IMU, telemetry veya fusion state'i birden fazla task tarafından doğrudan değiştirilmeyecek.
-* **Her yeni modül için önce arayüz, sonra implementasyon.**
-* **`old_project/`**** gerekli yerlerde referans alınabilir.** Aynı algoritmanın sadeleştirilmiş ve temiz versiyonu hedeflenir.
-* **Comment sadece gerekli yerde.** Özellikle görünmeyen neden varsa yaz; bariz şeyi tekrar etme.
-* **Identifier'lar İngilizce kalacak.** Açıklama Türkçe olabilir.
+| Task | Öncelik | Stack | Görev |
+| ---- | ------- | ----- | ----- |
+| IMU | `osPriorityHigh` | 512 × 4 B | Sensör okuma + Mahony + snapshot publish |
+| Telemetry | `osPriorityBelowNormal` | 256 × 4 B | 50 Hz UART2 DMA TX |
 
 ## Donanım haritası
 
-| Peripheral | Pin              | Görev            |
-| ---------- | ---------------- | ---------------- |
-| I2C1       | PB8 SCL, PB9 SDA | BMI088           |
-| I2C3       | PA8 SCL, PC9 SDA | BME280           |
-| EXTI3      | PB3              | BMI088 ACC DRDY  |
-| EXTI4      | PB4              | BMI088 GYRO DRDY |
-| USART2     | DMA              | Telemetry        |
-|            |                  |                  |
-
-## Başlangıç akışı
-
-Bu aşamada hedef **event-driven mimariyi zorlamak değil**, deterministik ve temiz bir RTOS iskeleti kurmaktır.
-
-* Main thread yalnızca `Application_Start()` çağıracak.
-* Callback'ler minimum iş yapacak.
-* İlk doğrulama hedefi: sistemin temiz açılması, task'ların çalışması ve sonraki modül için güvenli altyapının hazır olması.
+| Peripheral | Pin | Görev |
+| ---------- | --- | ----- |
+| I2C1 | PB8 SCL, PB9 SDA | BMI088 (ACC + GYRO ortak bus) |
+| I2C3 | PA8 SCL, PC9 SDA | BME280 |
+| EXTI3 | PB3 | BMI088 ACC DRDY |
+| EXTI4 | PB4 | BMI088 GYRO DRDY |
+| USART2 | DMA TX/RX | Telemetry (ST-Link VCP) |
+| USART6 | DMA RX | GNSS (L86) |
+| UART4 | DMA TX | LoRa (E22) |
+| SPI1 / SPI3 | — | Flash / RF |
+| BUZZER | PB14 | Durum sinyali |
 
 ## Build
 
@@ -128,31 +150,60 @@ cmake --build build/Debug
 
 Çıktı: `FreeRtos_project/build/Debug/*.elf` + `.hex` + `.bin`
 
-## old_project'ten port edilecek modüller
+Mevcut boyutlar: FLASH ~52 KB / 512 KB (%10), RAM ~22 KB / 128 KB (%17).
 
-Yol: `old_project/Core/Src/`
+## old_project'ten port durumu
 
-| Dosya                | İçerik                   | Durum                          |
-| -------------------- | ------------------------ | ------------------------------ |
-| `bmi088.c`           | BMI088 driver            | düzenlenecek ve port edilecek  |
-| `queternion.c`       | Mahony quaternion update | `mahony.c` içine port edilecek |
-| `kalman.c`           | Altitude Kalman filter   | Sonraki aşama                  |
-| `bme280.c`           | BME280 driver            | Sonraki aşama                  |
-| `flight_algorithm.c` | Flight state machine     | Sonraki aşama                  |
-| `sensor_fusion.c`    | Fusion mantığı           | Sonraki aşama                  |
-| `e22_lib.c`          | LoRa telemetry           | Sonraki aşama                  |
-| `l86_gnss.c`         | GNSS                     | Sonraki aşama                  |
-| `data_logger.c`      | SD write buffering       | Sd kart bu projede yok         |
-| `uart_handler.c`     | UART komut ayrıştırma    | Sonraki aşama                  |
-| `freertos.c`         | Eski task listesi        | Referans only                  |
+| Dosya | İçerik | Durum |
+| ----- | ------- | ----- |
+| `bmi088.c` | BMI088 driver | ✅ Yeniden yazıldı, port edildi |
+| `queternion.c` | Mahony quaternion | ✅ `mahony.c` olarak port edildi |
+| `bme280.c` | BME280 driver | Sonraki aşama |
+| `kalman.c` | Altitude Kalman filter | Sonraki aşama |
+| `flight_algorithm.c` | Flight state machine | Sonraki aşama |
+| `sensor_fusion.c` | Fusion mantığı | Sonraki aşama |
+| `e22_lib.c` | LoRa telemetry | Sonraki aşama |
+| `l86_gnss.c` | GNSS | Sonraki aşama |
+| `data_logger.c` | SD write buffering | SD kart bu projede yok |
+| `uart_handler.c` | UART komut ayrıştırma | Sonraki aşama |
 
-### Port sırasında düzeltilecek bilinen SKYRTOS problemleri
+## Öncelikli yol haritası
 
-* `sensor_fusion.c` ↔ `flight_algorithm.c` bağımlılık sarmalı
-* Blocking offset / calibration akışı
-* Tainted snapshot problemi
-* Mode geçişlerinde state reset eksikliği
-* Logging ve telemetry snapshot uyumsuzluğu
+1. ✅ FreeRTOS proje iskeletini doğrula.
+2. ✅ `Application_Start()` üzerinden tek giriş noktası kur.
+3. ✅ IMU pipeline: DRDY IRQ → DMA → parse → Mahony → snapshot.
+4. ✅ Telemetry task: snapshot → UART2 DMA binary frame.
+5. **IWDG ekle** — IMU task heartbeat beslemesi ile.
+6. Gyro offset kalibrasyonu (boot sırasında, blocking olmayan).
+7. Eksen haritalamasını PCB montajına göre doğrula.
+8. BME280 driver ve altitude Kalman filtresi.
+9. GNSS task.
+10. Flight state machine.
+11. LoRa telemetry.
+
+## Şu anki kritik hatalar (old_project'ten gelen, yeni projede tekrar edilmeyecek)
+
+### Çözüldü
+* ~~Blocking boot akışı~~ — `vTaskDelay` kullanılıyor.
+* ~~ISR içinde fazla iş~~ — ISR sadece notify gönderir.
+* ~~Veri tutarsızlığı~~ — `xQueueOverwrite` ile atomik snapshot.
+* ~~Stack güvenliği yok~~ — `configCHECK_FOR_STACK_OVERFLOW 2` + hook aktif.
+* ~~Boot sırasında interrupt açmak~~ — IRQ'lar handle set edildikten sonra açılıyor.
+
+### Hâlâ açık
+* **IWDG yok** — kilitlenme durumunda sistem reset alamıyor.
+* **Fatal handler infinite loop** — `Error_Handler()` reset yerine loop yapıyor (bilinçli bırakıldı, geliştirme aşamasında debug kolaylığı için).
+* **Gyro kalibrasyonu yok** — Mahony bias hatası ile başlıyor.
+
+## Kod yazma kuralları
+
+* **Adım adım ilerle.** Tek seferde büyük refactor yok.
+* **Her adım doğrulanmadan bir sonrakine geçme.**
+* **Tek sahipli modül yaklaşımı.** Bir modülün iç state'i başka task tarafından doğrudan yazılmaz.
+* **Her yeni modül için önce arayüz, sonra implementasyon.**
+* **Comment sadece gerekli yerde.** Görünmeyen nedeni açıkla; bariz olanı tekrar etme.
+* **Identifier'lar İngilizce.** Açıklama Türkçe olabilir.
+* **`OLD_Project/` gerekli yerlerde referans alınabilir.** Aynı algoritmanın temiz versiyonu hedeflenir, birebir kopyalanmaz.
 
 ## Halil hakkında
 
@@ -160,22 +211,6 @@ Yol: `old_project/Core/Src/`
 * Junior embedded geliştirici.
 * Bitirme projesinde çalışan, anlaşılır ve jüriye anlatılabilir kod ister.
 * Büyük refactor yerine küçük, doğrulanabilir adımlarla ilerlemek daha uygundur.
-
-## Öncelikli yol haritası
-
-1. FreeRTOS proje iskeletini doğrula.
-2. `Application_Start()` üzerinden tek giriş noktası kur.
-3. IMU driver akışını düzelt ve temiz pipeline'ı kur:
-
-   * ACC DRDY IRQ → DMA başlat
-   * GYRO DRDY IRQ → DMA başlat
-   * DMA complete → parse
-   * accel + gyro ikisi de güncellenince Mahony update
-4. Task modeli ve stack boyutlarını temizle.
-5. İlk modülü güvenli şekilde ekle.
-6. Sonra sensör driver'lara geç.
-7. Ardından füzyon ve flight mantığı gelir.
-8. IWDG ekle ve sistem health modelini tamamla.
 
 ## Değişmez prensip
 
