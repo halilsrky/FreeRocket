@@ -2848,6 +2848,7 @@ int SEGGER_SYSVIEW_IsStarted(void) {
   //
   // Check if host is sending data which needs to be processed.
   //
+#if (SEGGER_SYSVIEW_POST_MORTEM_MODE != 1)
   if (SEGGER_RTT_HASDATA(CHANNEL_ID_DOWN)) {
     if (_SYSVIEW_Globals.RecursionCnt == 0) {   // Avoid uncontrolled nesting. This way, this routine can call itself once, but no more often than that.
       _SYSVIEW_Globals.RecursionCnt = 1;
@@ -2855,6 +2856,7 @@ int SEGGER_SYSVIEW_IsStarted(void) {
       _SYSVIEW_Globals.RecursionCnt = 0;
     }
   }
+#endif
   return _SYSVIEW_Globals.EnableState;
 }
 
