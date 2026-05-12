@@ -103,6 +103,8 @@ int main(void)
   MX_FATFS_Init();
   /* USER CODE BEGIN 2 */
 
+   SEGGER_SYSVIEW_Conf();
+    SEGGER_SYSVIEW_Start();
   /* USER CODE END 2 */
 
   /* Init scheduler */

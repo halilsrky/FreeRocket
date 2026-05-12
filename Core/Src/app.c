@@ -7,8 +7,7 @@
 
 void Application_Start(void)
 {
-    SEGGER_SYSVIEW_Conf();
-    SEGGER_SYSVIEW_Start();
+ 
 
     imu_task_create();
     telemetry_task_create();
