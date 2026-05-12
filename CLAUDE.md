@@ -173,13 +173,10 @@ Mevcut boyutlar: FLASH ~52 KB / 512 KB (%10), RAM ~22 KB / 128 KB (%17).
 2. ✅ `Application_Start()` üzerinden tek giriş noktası kur.
 3. ✅ IMU pipeline: DRDY IRQ → DMA → parse → Mahony → snapshot.
 4. ✅ Telemetry task: snapshot → UART2 DMA binary frame.
-5. **IWDG ekle** — IMU task heartbeat beslemesi ile.
-6. Gyro offset kalibrasyonu (boot sırasında, blocking olmayan).
-7. Eksen haritalamasını PCB montajına göre doğrula.
-8. BME280 driver ve altitude Kalman filtresi.
-9. GNSS task.
-10. Flight state machine.
-11. LoRa telemetry.
+5. BME280 driver ve altitude Kalman filtresi.
+6. GNSS task.
+7. Flight state machine.
+8. LoRa telemetry.
 
 ## Şu anki kritik hatalar (old_project'ten gelen, yeni projede tekrar edilmeyecek)
 
