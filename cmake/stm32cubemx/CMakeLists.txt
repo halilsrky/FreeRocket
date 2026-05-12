@@ -31,6 +31,10 @@ set(MX_Application_Src
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/gpio.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/freertos.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/app.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/bmi088.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/mahony.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/imu_task.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/telemetry_task.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/adc.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/dma.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/i2c.c
