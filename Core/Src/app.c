@@ -3,9 +3,12 @@
 #include "imu_task.h"
 #include "telemetry_task.h"
 #include "cmsis_os.h"
+#include "SEGGER_SYSVIEW.h"
 
 void Application_Start(void)
 {
+    SEGGER_SYSVIEW_Conf();
+
     imu_task_create();
     telemetry_task_create();
 }

@@ -44,6 +44,7 @@ FreeRtos_project/       ← aktif proje (STM32CubeIDE .ioc + HAL + FreeRTOS)
 | `Core/Src/imu_task.c` / `Inc/imu_task.h` | IMU pipeline task | ✅ Tamamlandı |
 | `Core/Inc/imu_snapshot.h` | `imu_snapshot_t` struct + `imu_snapshot_peek()` | ✅ Tamamlandı |
 | `Core/Src/telemetry_task.c` / `Inc/telemetry_task.h` | UART2 DMA binary telemetry (50 Hz) | ✅ Tamamlandı |
+| `Middlewares/SEGGER/` | SEGGER RTT + SystemView middleware | ✅ Post-Mortem modu aktif |
 
 ### Henüz kapsam dışı
 
@@ -150,7 +151,11 @@ cmake --build build/Debug
 
 Çıktı: `FreeRtos_project/build/Debug/*.elf` + `.hex` + `.bin`
 
-Mevcut boyutlar: FLASH ~52 KB / 512 KB (%10), RAM ~22 KB / 128 KB (%17).
+Mevcut boyutlar: FLASH ~52 KB / 512 KB (%10), RAM ~22 KB + ~41 KB SEGGER buffer = ~63 KB / 128 KB (%49).
+
+## SEGGER SystemView — Post-Mortem modu
+JTAG/canlı bağlantı olmadan çalışır. Sistem çalışırken olaylar RAM'deki ring buffer'a yazılır. Sonra debugger ile buffer dump edilip SystemView masaüstü uygulamasında açılır.
+
 
 ## old_project'ten port durumu
 
@@ -173,10 +178,11 @@ Mevcut boyutlar: FLASH ~52 KB / 512 KB (%10), RAM ~22 KB / 128 KB (%17).
 2. ✅ `Application_Start()` üzerinden tek giriş noktası kur.
 3. ✅ IMU pipeline: DRDY IRQ → DMA → parse → Mahony → snapshot.
 4. ✅ Telemetry task: snapshot → UART2 DMA binary frame.
-5. BME280 driver ve altitude Kalman filtresi.
-6. GNSS task.
-7. Flight state machine.
-8. LoRa telemetry.
+5. ✅ SEGGER SystemView Post-Mortem modu: ring buffer kaydı + GDB dump.
+6. BME280 driver ve altitude Kalman filtresi.
+7. GNSS task.
+8. Flight state machine.
+9. LoRa telemetry.
 
 ## Şu anki kritik hatalar (old_project'ten gelen, yeni projede tekrar edilmeyecek)
 

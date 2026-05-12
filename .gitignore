@@ -3,6 +3,7 @@ build/
 Debug/
 Release/
 Cube/build
+temp/
 
 # Compiler / linker artefactları
 *.o
