@@ -30,11 +30,15 @@
 
 /* ---- Thread storage ---------------------------------------------------- */
 
+/* Stacks declared BEFORE their OSThread TCBs so that a stack overflow grows
+ * into lower-addressed BSS variables rather than directly into the TCB.
+ * (Linker places BSS in declaration order: stack_imu[0] is the low-address
+ * end, imuThread sits at a higher address, above the danger zone.) */
+static uint32_t  stack_imu[1024];  /* 4 kB: HAL I2C + FPU frames + libm (atan2f/acosf/snprintf) depth */
 static OSThread  imuThread;
-static uint32_t  stack_imu[512];   /* 2 kB: HAL I2C + FPU exception frames */
 
-static OSThread  idleThreadStack;  /* Q_REQUIRE inside OS_init uses idleThread */
-static uint32_t  stack_idle[64];   /* 256 B: sadece __WFI, ama IRQ frame lazım */
+static uint32_t  stack_idle[64];   /* 256 B: sadece __WFI, IRQ frame lazım */
+static OSThread  idleThreadStack;
 
 /* ---- Sensor sample buffers (DMA-targeted) ----------------------------- */
 

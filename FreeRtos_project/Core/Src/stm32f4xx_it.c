@@ -89,44 +89,19 @@ void NMI_Handler(void)
   /* USER CODE END NonMaskableInt_IRQn 1 */
 }
 
-/* Inspect these in the debugger when HardFault fires.
- * pc = where the fault happened, cfsr = fault type. */
-static volatile uint32_t hf_r0, hf_r1, hf_r2, hf_r3;
-static volatile uint32_t hf_r12, hf_lr, hf_pc, hf_psr;
-static volatile uint32_t hf_cfsr, hf_hfsr, hf_bfar, hf_mmfar;
-
-void HardFault_Handler_C(uint32_t *sp)
-{
-    hf_r0   = sp[0];
-    hf_r1   = sp[1];
-    hf_r2   = sp[2];
-    hf_r3   = sp[3];
-    hf_r12  = sp[4];
-    hf_lr   = sp[5];
-    hf_pc   = sp[6];  /* <-- fault address */
-    hf_psr  = sp[7];
-    hf_cfsr  = SCB->CFSR;
-    hf_hfsr  = SCB->HFSR;
-    hf_bfar  = SCB->BFAR;
-    hf_mmfar = SCB->MMFAR;
-    while (1) {}
-}
-
 /**
   * @brief This function handles Hard fault interrupt.
   */
-__attribute__((naked))
 void HardFault_Handler(void)
 {
   /* USER CODE BEGIN HardFault_IRQn 0 */
-  __asm volatile (
-      "TST   lr, #4      \n"  /* check which stack was active */
-      "ITE   EQ          \n"
-      "MRSEQ r0, MSP     \n"
-      "MRSNE r0, PSP     \n"
-      "B     HardFault_Handler_C \n"
-  );
+
   /* USER CODE END HardFault_IRQn 0 */
+  while (1)
+  {
+    /* USER CODE BEGIN W1_HardFault_IRQn 0 */
+    /* USER CODE END W1_HardFault_IRQn 0 */
+  }
 }
 
 /**
@@ -175,19 +150,6 @@ void UsageFault_Handler(void)
 }
 
 /**
-  * @brief This function handles System service call via SWI instruction.
-  */
-void SVC_Handler(void)
-{
-  /* USER CODE BEGIN SVCall_IRQn 0 */
-
-  /* USER CODE END SVCall_IRQn 0 */
-  /* USER CODE BEGIN SVCall_IRQn 1 */
-
-  /* USER CODE END SVCall_IRQn 1 */
-}
-
-/**
   * @brief This function handles Debug monitor.
   */
 void DebugMon_Handler(void)
@@ -199,15 +161,6 @@ void DebugMon_Handler(void)
 
   /* USER CODE END DebugMonitor_IRQn 1 */
 }
-
-/* PendSV_Handler and SysTick_Handler are provided by miros.c.
- *
- * IMPORTANT: if CubeMX regenerates this file (e.g. after .ioc changes),
- * STM32CubeMX will re-add empty PendSV_Handler() and SysTick_Handler()
- * stubs here. The linker will then fail with "multiple definition".
- * When that happens, delete the regenerated stubs again — this comment
- * is your reminder.
- */
 
 /******************************************************************************/
 /* STM32F4xx Peripheral Interrupt Handlers                                    */
@@ -229,7 +182,6 @@ void EXTI3_IRQHandler(void)
 
   /* USER CODE END EXTI3_IRQn 1 */
 }
-
 
 /**
   * @brief This function handles EXTI line 4 interrupt.
@@ -327,14 +279,6 @@ void I2C1_EV_IRQHandler(void)
   /* USER CODE BEGIN I2C1_EV_IRQn 1 */
 
   /* USER CODE END I2C1_EV_IRQn 1 */
-}
-
-/**
-  * @brief This function handles I2C1 error interrupt.
-  */
-void I2C1_ER_IRQHandler(void)
-{
-  HAL_I2C_ER_IRQHandler(&hi2c1);
 }
 
 /**

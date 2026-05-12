@@ -1,193 +1,184 @@
-# mini_rtos — STM32F446 NUCLEO Flight Computer
+# SKYRTOS — STM32F446 NUCLEO Flight Computer
 
-Halil'in bitirme projesi. BMI088 IMU + BME280 baro üzerinden çalışan
-roket flight computer'ı. Kendi yazdığı **MiROS** kernel'i + STM32 **HAL**.
-Eski FreeRTOS tabanlı SKYRTOS projesi MiROS'a port ediliyor.
+Halil'in bitirme projesi. BMI088 IMU + BME280 baro + GNSS + LoRa + SD logging içeren roket flight computer yazılımı.
+
+**Karar değişti:** Kendi mini RTOS kernel'ımızı yazmayacağız.
+
+* Neden: stack overflow, hard fault, race condition, scheduler edge-case ve ISR/priority hataları proje hızını ve güvenilirliğini bozar.
+* Hedef: **STM32CubeIDE ile eklenmiş FreeRTOS tabanlı, temiz, okunabilir, adım adım ilerleyen bir mimari**.
+* Bu proje artık “kernel yazma” projesi değil; **uçuş bilgisayarı mimarisi ve güvenilirlik projesi**.
 
 ## Klasör yapısı
 
 ```
 mini_rtos/
-├── Cube/         ← aktif proje (STM32CubeIDE .ioc + HAL + MiROS)
-├── OLD_Project/  ← SKYRTOS arşivi — referans, driver portu için ilham
-├── Report.md     ← bitirme raporu için teknik notlar (zorluklar, teşhis, çözüm)
-└── CLAUDE.md     ← bu dosya
+├── FreeRtos_project/   ← aktif proje (STM32CubeIDE .ioc + HAL + FreeRTOS)
+├── old_project/        ← SKYRTOS arşivi — referans, driver ve algoritma portu için
+├── Report.md           ← bitirme raporu için teknik notlar
+└── CLAUDE.md           ← bu dosya
 ```
 
-**`OLD_Project/`'i ASLA silme.** Kalman, Mahony quaternion, BME280, GPS,
-sensor fusion, flight algorithm gibi modüller buradan port edilecek
-(kopya değil — okuyup MiROS+HAL'e uyarlayarak port).
+**`old_project/`**** asla silinmeyecek.** Buradan algoritma ve sürücü mantığı port edilecek; doğrudan kopyala-yapıştır değil, okuyup sadeleştirerek uyarlanacak.
 
-**`Report.md` — bitirme raporu için ham not deposu.** Ciddi teknik
-zorluklar (kök neden + teşhis süreci + uygulanan çözüm + proper fix
-TODO'ları) buraya kaydedilir. Sıradan refactor / küçük bug fix
-kaydedilmez — rapora yazılacak değerde, öğretici olaylar için.
-Her giriş kendi başlığı altında, tarihli; rapor yazımında bu notlar
-genişletilip akademik dile çevrilecek. Önemli bir hata teşhisi /
-mimari karar / non-obvious bug çözümü olduğunda buraya ekle.
+**`Report.md`** — bitirme raporu için ham teknik notlar deposu. Sadece rapor değeri olan olaylar yazılır: kök neden, teşhis, çözüm, tekrar etmemesi için alınan önlem. Sıradan refactor notları buraya girmez.
 
-## Aktif proje (`Cube/`)
+## Aktif proje (`FreeRtos_project/`)
 
-CubeMX `.ioc` üzerinden peripheral init üretiliyor; biz **sadece**
-`Core/Src/app.c` (uygulama katmanı) ve `Core/Src/bmi088.c` (HAL bazlı
-sürücü) yazıyoruz. Cube'un ürettiği dosyalara minimum dokunuş:
+Aktif proje içinde şu an **sadece CubeMX ile üretilen peripheral init dosyaları** ve **FreeRTOS middleware** var. Sensör driver'ları henüz eklenmiş değil; önce sağlam iskelet kurulacak, sonra tek tek driver eklenecek.
 
-| Dosya | Görev | Cube üretti mi? |
-| --- | --- | --- |
-| `Core/Src/main.c` | HAL init + `Application_Start()` çağrısı | Evet — USER CODE 2'ye tek satır eklenmiş |
-| `Core/Src/app.c` | MiROS init, task'lar, HAL callback override'ları | Hayır |
-| `Core/Src/bmi088.c` | BMI088 sürücü (polled init + DMA read + parse) | Hayır |
-| `Core/Src/mahony.c` | 6DOF AHRS (gyro+accel füzyon, OLD'dan port) | Hayır |
-| `Core/Src/miros.c` | Kernel (priority scheduler + event flags + PendSV asm) | Hayır |
-| `Core/Inc/app.h` | Event mask define'ları, `Application_Start()` proto | Hayır |
-| `Core/Inc/bmi088.h`, `bmi088_regs.h` | Driver API + register map | Hayır |
-| `Core/Inc/mahony.h` | AHRS API (quat/euler/gyro-only flag) | Hayır |
-| `Core/Inc/miros.h`, `qassert.h` | Kernel API + assertion helper | Hayır |
-| `Core/Src/stm32f4xx_it.c` | IRQ vektörleri | Evet — **PendSV ve SysTick stubları silindi** (MiROS sağlıyor) |
-| `Core/Src/i2c.c`, `gpio.c`, ... | Peripheral init | Evet, dokunma |
-| `Core/Src/stm32f4xx_hal_timebase_tim.c` | HAL tick TIM6'da | Evet, dokunma |
-| `cmake/stm32cubemx/CMakeLists.txt` | Cube source listesi | Evet, dokunma — user source `Cube/CMakeLists.txt`'e eklenir |
+| Dosya                                                   | Görev                                    | Not                                        |
+| ------------------------------------------------------- | ---------------------------------------- | ------------------------------------------ |
+| `Core/Src/main.c`                                       | HAL init + `Application_Start()` çağrısı | Sadece USER CODE bloğuna tek giriş noktası |
+|                                                         |                                          |                                            |
+| `Core/Src/stm32f4xx_it.c`                               | IRQ vektörleri                           | Cube üretir                                |
+| `Core/Src/gpio.c`, `i2c.c`, `dma.c`, `usart.c`, `tim.c` | Peripheral init                          | Cube üretir; mümkün olduğunca dokunma      |
+| `Middlewares/Third_Party/FreeRTOS/`                     | FreeRTOS middleware                      | Hazır kullanılır                           |
 
-## Mimari kararlar (SABİT — tekrar tartışılmaz)
+### Şu an kapsam dışı
 
-- **MiROS** kullanılıyor: priority scheduler (1..31, prio = index), per-thread
-  event flags (`OS_evtWait` LSB-first tek bit consume eder),
-  ISR-safe `OS_evtSignal_FromISR` (PRIMASK save/restore, PendSV pend).
-- **PendSV FPU-aware** (Cortex-M4F): her thread context'i `r4-r11 + EXC_RETURN`
-  + (varsa) `s16-s31` saklar. Initial frame'de `EXC_RETURN=0xFFFFFFF9`.
-  Detay için bkz. [Report.md](Report.md) §1. ARMv6-M (M0) portu kaldırıldı.
-- **HAL** kullanılıyor. Önce bare-metal denedik (i2c1.c register-level,
-  EXTI manuel setup) — Halil için karmaşık geldi, **2026-05-11 pivot**
-  ile HAL'e geçtik. Register-level kod silindi.
-- **FreeRTOS yok, AO/QP yok.** İki kernel paralel çalışmaz. Düz event
-  queue + dispatcher mantığı kullanılır.
-- **Watchdog (IWDG)** her senaryoda eklenmeli (bitirme projesi de olsa).
-- **Donanımdan ayrı main:** `main.c` HAL init yapar, sonra
-  `Application_Start()` çağırır (USER CODE 2 bloğu — regenerate-safe).
-  MiROS init, task'lar, callback'ler `app.c`'de.
-- **HAL tick TIM6'da**, SysTick MiROS'a serbest.
-- **PendSV/SysTick handler çakışması:** `stm32f4xx_it.c`'deki boş Cube
-  stubları silindi. MiROS kendi versiyonlarını sağlıyor. CubeMX yeniden
-  generate ederse stublar geri gelir → tekrar silmek gerek (dosyada uyarı
-  yorumu var).
+* BMI088 sürücüsü yok
+* BME280 sürücüsü yok
+* GNSS yok
+* LoRa telemetry yok
+* Flight algorithm yok
+* Kalman / Mahony henüz port edilmemiş olabilir
 
-## Coding kuralları
+Önce proje iskeleti, task modeli ve temiz giriş noktası kurulacak. Sensörler daha sonra eklenir.
 
-- **Busy-wait / blocking polling yasak.** Sensör okuma her zaman
-  `HAL_I2C_Mem_Read_DMA` + DMA complete event üzerinden. `HAL_Delay`
-  yerine `OS_delay(ticks)`.
-- **HAL weak callback override'ları** event POST için kullanılır:
-  - `HAL_GPIO_EXTI_Callback(GPIO_Pin)` — EXTI3/EXTI4 dispatch
-  - `HAL_I2C_MemRxCpltCallback(hi2c)` — DMA complete
-  - `HAL_I2C_ErrorCallback(hi2c)` — bus error
-- **ISR'lardan** `OS_evtSignal_FromISR(&thread, EVT_BIT)` kullanılır.
-- Comment yazma kuralı: WHY non-obvious ise yaz (datasheet quirk, hidden
-  invariant), WHAT'i kod söylüyor. Tek satır docstring/comment yeter.
-- Türkçe açıklama OK ama kodda identifier'lar İngilizce.
+## Mimari kararlar
 
-## Donanım haritası (.ioc'ten)
+* **FreeRTOS kullanılıyor.** Kendi kernel'ımız yok.
+* **AO / QP / ikinci bir scheduler yok.** Tek yürütme modeli FreeRTOS.
+* **Mimari tam event-driven olmak zorunda değil.** Bu projede öncelik deterministik ve okunabilir FreeRTOS akışı. Gerekli yerlerde event/flag kullanılabilir ama her şeyi event-driven yapmaya zorlamayacağız.
+* **Blocking çağrılar minimumda tutulacak.** `HAL_Delay`, polling loop ve sonsuz beklemeler yok. Bu aşamada ADC/SD olmadığı için `f_write` gibi başlıklar da kapsam dışı.
+* **ISR içinde iş minimum olacak.** ISR sadece event set eder, DMA başlatır veya kısa state güncellemesi yapar.
+* **Watchdog (IWDG) şart.** Flight computer reset alabilmeli, kilitlenmemeli.
+* **Veri sahipliği tek kaynaklı olacak.** Aynı sensör verisi birden fazla task tarafından farklı snapshot olarak tüketilmeyecek.
+* **Synchronization primitive kullanımı kontrollü olacak:**
 
-| Peripheral | Pin | Görev |
-| --- | --- | --- |
-| I2C1 (DMA1 Stream0 Ch1) | PB8 SCL, PB9 SDA | BMI088 (acc 0x18, gyro 0x68) |
-| I2C3 | PA8 SCL, PC9 SDA | BME280 (sonra) |
-| EXTI3 | PB3 | BMI088 ACC INT1 (DRDY, rising) |
-| EXTI4 | PB4 | BMI088 GYRO INT3 (DRDY, rising) |
-| USART2 | DMA1 Stream6 (TX), Stream5 (RX) | telemetry — Mahony çıktısı (scaled int, 100 Hz) |
-| USART6 / UART4 | DMA | (gelecek) |
-| SPI1, SPI3 | — | (gelecek: SD, W25 flash) |
-| TIM2 | — | (gelecek) |
-| TIM6 | dahili | HAL tick (1 ms) |
+  * ISR → task iletişimi için öncelikli mekanizma `task notification`
+  * Queue yalnızca event, command veya immutable snapshot taşımak için kullanılacak
+  * Aynı sensör verisi birden fazla task tarafından ayrı snapshot olarak tüketilmeyecek
+  * Mutex yalnızca gerçekten kaçınılmaz paylaşılan kaynak varsa kullanılacak
+  * Semaphore kullanımı minimum tutulacak; notification tercih edilecek
+* **Mode geçişleri explicit state machine ile yönetilecek.** Gizli global flag karmaşası olmayacak.
+* old_project/``** referans olarak kullanılacak.** Oradaki gerekli driver ve mantıklar port edilecek; eski mimari aynen taşınmayacak.
 
-`Cube/Core/Src/gpio.c`, `i2c.c`, `dma.c` Cube tarafından üretildi,
-detaylar oradadır.
 
-## Event yapısı (şu anki tek task: imuThread)
+## Şu anki kritik hatalar
 
-```c
-// Cube/Core/Inc/app.h
-#define EVT_ACCEL_DRDY  (1U << 0)
-#define EVT_GYRO_DRDY   (1U << 1)
-#define EVT_DMA_DONE    (1U << 2)
-#define EVT_I2C_ERROR   (1U << 3)
-```
+Bu başlık, old_project'teki SKYRTOS döneminden gelen hataların nedenlerinden oluşur. Yeni projede bunlar tekrar edilmeyecek.
 
-`imuThread` (prio 5):
-```
-EXTI3 (ACC DRDY)  →  HAL_GPIO_EXTI_Callback  →  POST EVT_ACCEL_DRDY
-EXTI4 (GYRO DRDY) →  HAL_GPIO_EXTI_Callback  →  POST EVT_GYRO_DRDY
-imuThread.evtWait → DRDY → HAL_I2C_Mem_Read_DMA(6 bytes)
-DMA1_Stream0 IRQ  →  HAL_I2C_MemRxCpltCallback  →  POST EVT_DMA_DONE
-imuThread.evtWait → DMA_DONE → parse → s_have_{accel,gyro} fresh flag
-   if both fresh → mahony_update(dt=1/400 s) → telem decimator (÷4)
-                   → UART2 DMA TX (drop on busy, ~100 Hz)
-```
+### Kritik
 
-Tek I2C bus + tek DMA stream var → DRDY'ler serileştirilir.
-`app.c`'deki `s_phase` (IDLE / READ_ACCEL / READ_GYRO) state machine
-in-flight transfer'i izler, `s_pending_accel/gyro` bekleyen DRDY'leri
-tutar, `imu_kick_next()` DMA done'da bekleyeni başlatır.
+* **Blocking boot akışı:** sensör init sırasında uzun `HAL_Delay`, timeout loop ve kalibrasyon bloklaması boot'u gereksiz uzatıyor.
+* **ISR içinde fazla iş:** EXTI callback içinde sadece işaretleme değil, transfer başlatma ve ek mantık var.
+* **Veri tutarsızlığı:** accel ve gyro ayrı anlarda işlenip tek sample gibi publish ediliyor.
+* **Fatal handler:** `Error_Handler()` uçuşta sistemi sonsuz döngüde bırakmamalı.
+* **Stack güvenliği yok:** stack overflow tespiti ve heap hatası kontrolü yoksa sessiz çöküş olur.
+* **Mode karmaşası:** mode değişimi state machine yerine dağınık if blokları ile yönetilirse reset/re-init bug'ları doğar.
 
-Telemetri formatı (ASCII, scaled int — float-printf bağımlılığı yok):
-`q,<w*10000>,<x*10000>,<y*10000>,<z*10000>,e,<r*100>,<p*100>,<y*100>,m,<gmode>\r\n`
-NUCLEO ST-LINK VCP üzerinden 115200 baud (PA2/PA3 → ST-LINK USB).
-Önceki TX hala uçuyorsa o örnek düşürülür (block etmek imuThread'i
-durdurur, telemetri için kabul edilemez).
+### Orta önem
+
+* **Blocking UART / blocking polling** task jitter üretir.
+* **Global değişkenlerle paylaşılan state** race condition üretir.
+* **Boot sırasında interrupt açmak** initialization sırası problemleri yaratır.
+
+### Sonuç
+
+Bu hatalar gösterdi ki sorun “RTOS kullanmak” değil; **mimarinin dağınık olması**. Yeni projede bu yüzden kernel yazma yoluna gidilmeyecek.
+
+## Kod yazma kuralları
+
+* **Adım adım ilerle.** Tek seferde büyük refactor yok.
+* **Önce çalışan minimal iskelet**, sonra tek sensör, sonra bir sonraki modül.
+* **Her adım doğrulanmadan bir sonrakine geçme.**
+* **Önce tek veri akışı, tek task.** Sonra genişlet.
+* **Tek sahipli modül yaklaşımı kullan.** IMU, telemetry veya fusion state'i birden fazla task tarafından doğrudan değiştirilmeyecek.
+* **Her yeni modül için önce arayüz, sonra implementasyon.**
+* **`old_project/`**** gerekli yerlerde referans alınabilir.** Aynı algoritmanın sadeleştirilmiş ve temiz versiyonu hedeflenir.
+* **Comment sadece gerekli yerde.** Özellikle görünmeyen neden varsa yaz; bariz şeyi tekrar etme.
+* **Identifier'lar İngilizce kalacak.** Açıklama Türkçe olabilir.
+
+## Donanım haritası
+
+| Peripheral | Pin              | Görev            |
+| ---------- | ---------------- | ---------------- |
+| I2C1       | PB8 SCL, PB9 SDA | BMI088           |
+| I2C3       | PA8 SCL, PC9 SDA | BME280           |
+| EXTI3      | PB3              | BMI088 ACC DRDY  |
+| EXTI4      | PB4              | BMI088 GYRO DRDY |
+| USART2     | DMA              | Telemetry        |
+|            |                  |                  |
+
+## Başlangıç akışı
+
+Bu aşamada hedef **event-driven mimariyi zorlamak değil**, deterministik ve temiz bir RTOS iskeleti kurmaktır.
+
+* Main thread yalnızca `Application_Start()` çağıracak.
+* Callback'ler minimum iş yapacak.
+* İlk doğrulama hedefi: sistemin temiz açılması, task'ların çalışması ve sonraki modül için güvenli altyapının hazır olması.
 
 ## Build
 
 ```powershell
-# Cube/ klasöründen
+# FreeRtos_project/ klasöründen
 cmake --preset Debug
 cmake --build build/Debug
 ```
 
-Çıktı: `Cube/build/Debug/mirtos.elf` (+ .hex + .bin tarafından otomatik).
-Size kontrolü için `arm-none-eabi-size build/Debug/mirtos.elf`.
+Çıktı: `FreeRtos_project/build/Debug/*.elf` + `.hex` + `.bin`
 
-## OLD_Project'ten port edilecek modüller
+## old_project'ten port edilecek modüller
 
-Yol: `OLD_Project/Core/Src/` (working directory altında — relative path).
-Kopyalamak yerine algoritmik mantığı çıkarıp MiROS+HAL'e uyarla.
+Yol: `old_project/Core/Src/`
 
-| Dosya | İçerik | Port önceliği |
-| --- | --- | --- |
-| ~~`queternion.c`~~ | Mahony quaternion update | **Port edildi 2026-05-11** → `mahony.c`. Tek versiyon vardı (typo'lu). FPU-friendly versiyona temizlendi, BMI_sensor coupling kaldırıldı, gyro-only mode + adaptive Kp/Ki korundu |
-| `kalman.c` | Altitude Kalman filter | Yüksek — flightTask için |
-| `bme280.c` | Basınç/sıcaklık sürücü (I2C3) | Yüksek — flightTask DRDY'si |
-| `flight_algorithm.c` | Uçuş fazı state machine (boost/coast/apogee/descent/touchdown) | Orta |
-| `sensor_fusion.c` | Sensor fusion + accel failure detection | Orta — Mahony + Kalman entegrasyon |
-| `e22_lib.c` | LoRa telemetry (E22 radyo) | Düşük |
-| `l86_gnss.c` | L86 GPS | Düşük |
-| `data_logger.c` | SD kart write buffering | Düşük |
-| `uart_handler.c` | UART2 RX command dispatcher | Düşük |
-| `freertos.c` | Eski task tanımları (MiROS karşılığı `app.c`) | Sadece referans — port etme |
+| Dosya                | İçerik                   | Durum                          |
+| -------------------- | ------------------------ | ------------------------------ |
+| `queternion.c`       | Mahony quaternion update | `mahony.c` içine port edilecek |
+| `kalman.c`           | Altitude Kalman filter   | Sonraki aşama                  |
+| `bme280.c`           | BME280 driver            | Sonraki aşama                  |
+| `flight_algorithm.c` | Flight state machine     | Sonraki aşama                  |
+| `sensor_fusion.c`    | Fusion mantığı           | Sonraki aşama                  |
+| `e22_lib.c`          | LoRa telemetry           | Sonraki aşama                  |
+| `l86_gnss.c`         | GNSS                     | Sonraki aşama                  |
+| `data_logger.c`      | SD write buffering       | Sonraki aşama                  |
+| `uart_handler.c`     | UART komut ayrıştırma    | Sonraki aşama                  |
+| `freertos.c`         | Eski task listesi        | Referans only                  |
 
-**Bilinen SKYRTOS bug'ları** (port sırasında düzelt):
-- `sensor_fusion.c` ↔ `flight_algorithm.c` circular dependency
-- Mahony gyro-only path
-- `get_offset()` blocking
+### Port sırasında düzeltilecek bilinen SKYRTOS problemleri
+
+* `sensor_fusion.c` ↔ `flight_algorithm.c` bağımlılık sarmalı
+* Blocking offset / calibration akışı
+* Tainted snapshot problemi
+* Mode geçişlerinde state reset eksikliği
+* Logging ve telemetry snapshot uyumsuzluğu
 
 ## Halil hakkında
 
-- Junior embedded geliştirici, Türkçe konuşur.
-- Bitirme projesi → jüri etkisi önemli, çalışan + okunabilir kod tercih.
-- Adım adım gitmeyi sever ("ben de anlayalım") — büyük tek seferlik
-  refactor yerine küçük doğrulanabilir parçalar.
-- Eski bare-metal denemesinden vazgeçti; HAL + MiROS hibrit
-  yaklaşımıyla devam ediyor.
+* Türkçe konuşur.
+* Junior embedded geliştirici.
+* Bitirme projesinde çalışan, anlaşılır ve jüriye anlatılabilir kod ister.
+* Büyük refactor yerine küçük, doğrulanabilir adımlarla ilerlemek daha uygundur.
 
-## Sonraki adımlar (yapılacaklar)
+## Öncelikli yol haritası
 
-1. ~~Board'a flash → `imuThread`'in `bmi088_init`'ten geçtiğini doğrula.~~
-2. ~~DRDY → DMA → parse zinciri ve Mahony çalıştığını UART üzerinden gör.~~
-3. ~~Mahony quaternion port + `EVT_DMA_DONE` zincirine bağlama.~~
-4. **Mahony doğrulaması:** ST-LINK VCP @ 115200 baud, terminal aç,
-   "q,...,e,...,m,0" satırlarının aktığını gör; board'u el ile döndür,
-   roll/pitch/yaw mantıklı değişmeli. Yüksek-g (sallayarak) `m,1`
-   olmalı (gyro-only mode kicked in).
-5. Microsecond timer (TIM2) — gerçek dt için. Şu an `MAHONY_DT_S` sabit
-   1/400 s, gerçek inter-sample süre değil. ODR drift'ten etkilenir.
-6. BME280 (I2C3) sürücüsü + flightTask iskeleti.
-7. Kalman altitude filter (OLD/kalman.c port) — flightTask için.
-8. Watchdog (IWDG) refresh — imuThread içinden periyodik kick.
+1. FreeRTOS proje iskeletini doğrula.
+2. `Application_Start()` üzerinden tek giriş noktası kur.
+3. IMU driver akışını düzelt ve temiz pipeline'ı kur:
+
+   * ACC DRDY IRQ → DMA başlat
+   * GYRO DRDY IRQ → DMA başlat
+   * DMA complete → parse
+   * accel + gyro ikisi de güncellenince Mahony update
+4. Task modeli ve stack boyutlarını temizle.
+5. İlk modülü güvenli şekilde ekle.
+6. Sonra sensör driver'lara geç.
+7. Ardından füzyon ve flight mantığı gelir.
+8. IWDG ekle ve sistem health modelini tamamla.
+
+## Değişmez prensip
+
+**Önce güvenilir çalışan basit sistem. Sonra genişletme.**
+
+Spagetti yok. Kernel yazmak yok. Blocking yok. Tek sahipli veri akışı var. Adım adım ilerliyoruz.

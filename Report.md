@@ -187,3 +187,148 @@ yolundan geçildikten sonra context switch'lerde HardFault gelmiyor.
   hidden assumption oluyor.
 
 ---
+
+## 2. imuThread Stack Taşması → OSThread TCB Bozulması → INVPC HardFault
+
+**Tarih:** 2026-05-12
+**Etkilenen modüller:** `Cube/Core/Src/app.c` (fix uygulanan yer),
+`Cube/Core/Src/miros.c` (OSThread_start + PendSV — doğrudan değişmedi,
+root cause'u anlamak için incelendi).
+
+### Belirti
+
+Sistem flash'landı ve UART2 üzerinden düzgün telemetri akışı başladı.
+Yaklaşık 800–900 satır "q,...,e,...,m,..." çıktısından sonra sistem
+HardFault'a düştü ve dondu. Davranış **deterministik** idi: her
+çalışmada aynı bölgede (800–900 örnek) crash geldi.
+
+`HardFault_Handler_C` tarafından yakalanan register değerleri:
+
+| Register | Değer (hex) | Notlar |
+| --- | --- | --- |
+| `hf_r0`   | `0x0000000F` (15) | Corrupt stack'ten okunan r0 |
+| `hf_r1`   | `0x00010002` | — |
+| `hf_r2`   | `0x10000000` | — |
+| `hf_r3`   | `0xE000E100` | NVIC ISER base adresi — garbage |
+| `hf_lr`   | `0x200003DC` | `&huart2` SRAM adresi — geçersiz EXC_RETURN |
+| `hf_pc`   | `0x080085EE` | `OS_evtWait` içinde bir adres |
+| `hf_cfsr` | `0x00040000` | UFSR.INVPC (bit 18) set |
+| `hf_hfsr` | `0x40000000` | HFSR.FORCED — eskalasyon |
+
+### Teşhis süreci
+
+**Adım 1 — CFSR ve hf_lr'yi oku.**
+
+`CFSR=0x00040000` → `UFSR.INVPC` (bit 18). ARM ARM tanımı: *"BX lr ile
+exception return yaparken lr (EXC_RETURN) geçersiz."* EXC_RETURN'ün
+geçerli değerleri `0xFFFFxxxx` aralığındadır.
+
+`hf_lr = 0x200003DC` — geçersiz EXC_RETURN değeri.
+`0x200003DC` adresi `mirtos.map`'te `&huart2` (72 byte handle) olarak
+görünür. Yani PendSV `BX lr` yaparken lr register'ında bir UART handle
+adresi vardı.
+
+**Adım 2 — hf_pc ile crash noktasını bul.**
+
+`hf_pc = 0x080085EE` → `mirtos.map`'te `OS_evtWait` içinde
+(0x0800859C–0x08008648). Bu `imuThread`'in uyku state'inden uyandıktan
+sonra dönmesi gereken adres; corrupt exception frame'den unstacked olan PC.
+
+**Adım 3 — BSS layout'u map dosyasından kontrol et.**
+
+`mirtos.map` çıktısı (orijinal binary):
+
+```
+.bss.imuThread    0x20000730   0x14   ← OSThread TCB (20 byte)
+.bss.stack_imu    0x20000744   0x800  ← stack_imu[512] (2048 byte)
+```
+
+`imuThread.sp` (TCB'nin ilk field'ı, offset 0) adres `0x20000730`.
+`stack_imu[0]` (stack'in en alt kelimesi) adres `0x20000744`.
+
+TCB, stack'in altından (`stack_imu[0]`) yalnız 20 byte önce, **daha
+düşük** bir adreste oturuyor. Cortex-M stack yukarıdan aşağı büyüdüğü
+için stack taşması tam olarak TCB üzerine yazar.
+
+**Adım 4 — Taşmanın kaç byte olduğunu anla.**
+
+Efektif stack alanı: `0x20000744 + 0x800 - 20 = 0x20000F30` (top).
+`OSThread_start` initial frame'i 17 word (68 byte) push eder, SP başlar
+`0x20000EEC`'den. `mahony_update → update_gains_from_acc_error → acosf →
+__ieee754_acosf → atanf` libm zinciri + `telem_try_send → snprintf →
+_svfprintf_r` newlib frame'leri + her SysTick'te PendSV FPU context save
+(`PUSH {r4-r11, lr}` 36 byte + `VSTMDB {s16-s31}` 64 byte + HW extended
+frame 104 byte = 204 byte) birleşince 2048 byte sınırı aşıldı.
+
+**Adım 5 — Neden 800–900 örnekte?**
+
+İlk saniyeler boyunca Mahony yakınsama aşamasında: `err_deg` büyük,
+`acosf` argümanı değişken, stack derinliği dalgalı. Yaklaşık 8–9 saniye
+(800–900 örnek @ ~100 Hz telem rate) sonra filtre yakınsıyor, `err_deg`
+küçük ve kararlı, `update_gains_from_acc_error` her seferinde aynı derin
+`acosf → atanf` yolunu izliyor. Yığılan stack derinliği tutarlı olarak
+sınırı aşıyor. Bu yüzden crash deterministik ama gecikmeli.
+
+**Adım 6 — Taşmanın TCB etkisini doğrula.**
+
+`imuThread.sp` (offset 0) debugger'da `0x0000000F` (15) değerini
+taşıyordu — `OSThread_start`'ın 0xDEADBEEF canary'si silinmiş, TCB
+üzerine küçük bir tamsayı yazılmış. PendSV: `LDR r0, [imuThread, #0]` →
+r0 = 15, `MOV sp, 15`, `POP {r4-r11, lr}` adres ~15'ten (boot ROM /
+aliased flash). lr'a `0x200003DC` (&huart2 SRAM adresi) düştü.
+`BX 0x200003DC` → INVPC → HFSR.FORCED → HardFault.
+
+### Kök neden
+
+İki birbirini kötüleştiren sorun:
+
+1. **Yanlış tanımlama sırası (BSS layout).** `app.c`'de `imuThread`
+   TCB'si `stack_imu` dizisinden önce tanımlanmıştı. Bağlayıcı BSS'i
+   tanımlama sırasıyla yerleştirince TCB, stack'in hemen altına (daha
+   düşük adrese) oturdu. Her taşma doğrudan `imuThread.sp`'yi bozuyordu.
+
+2. **Yetersiz stack boyutu.** 512 word (2048 byte), Mahony libm
+   çağrıları + newlib snprintf + PendSV FPU context yükü (≈204 byte/IRQ)
+   için yetmiyordu.
+
+### Fix (uygulandı — 2026-05-12)
+
+`Cube/Core/Src/app.c`'de iki değişiklik:
+
+```c
+/* Önce (hatalı): TCB stack'in altında, taşma TCB'ye gidiyor */
+static OSThread  imuThread;
+static uint32_t  stack_imu[512];
+
+/* Sonra (düzeltilmiş): stack TCB'nin altında, taşma BSS boşluğuna gider */
+static uint32_t  stack_imu[1024];  /* 512 → 1024 word (2 kB → 4 kB) */
+static OSThread  imuThread;
+```
+
+Yeni BSS layout (`mirtos.map`, fix sonrası):
+
+```
+.bss.stack_imu    0x20000730   0x1000  ← stack_imu[1024] (4096 byte)
+.bss.imuThread    0x20001730   0x14    ← TCB şimdi stack'in üzerinde
+```
+
+Build sonrası RAM: 4.2 kB → 8.2 kB (%6.3 / 128 kB) — yeterli boşluk var.
+
+### Rapor için çıkarımlar
+
+- Stack overflow ile INVPC HardFault arasındaki zincir doğrudan değil:
+  taşma → `OSThread.sp` bozulması → PendSV geçersiz SP ile pop → lr'da
+  çöp → `BX` ile INVPC. Cortex-M'de MPU olmadan taşmanın nerede durduğu
+  bilinmez; semptom uzaktan ve gecikmeli gelir.
+- BSS tanımlama sırası C standardı garantisi değildir — GCC ve Clang
+  nesne dosyası içindeki tanımlama sırasına göre yerleştirir. Stack–TCB
+  bitişikliği bu garantisiz davranışa dayanıyorsa kırılgandır. Defensive
+  sıralama (stack önce, TCB sonra) taşmayı en azından TCB'den uzaklaştırır.
+- "Deterministik ama gecikmeli" crash pattern'i filtre yakınsama süresiyle
+  stack derinliğinin etkileştiğini gösteriyor. Bare-metal stack profiling
+  (0xDEADBEEF high-water mark taraması) boyutlandırma için şart.
+- Uygulama seviyesinde `Q_ASSERT(stack_imu[0] == 0xDEADBEEFU)` canary
+  kontrolü `EVT_DMA_DONE` handler'ına eklenebilir; taşma olduğunda
+  kontrollü assertion ile durulur, debug bilgisi kaybolmaz.
+
+---
