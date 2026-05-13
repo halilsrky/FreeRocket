@@ -1,4 +1,5 @@
 #include "imu_task.h"
+#include "baro_task.h"
 #include "bmi088_defs.h"
 #include "imu_snapshot.h"
 #include "bmi088.h"
@@ -175,18 +176,22 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 
 void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
 {
-    if (hi2c->Instance != I2C1 || s_handle == NULL) return;
-
-    BaseType_t woken = pdFALSE;
-    xTaskNotifyFromISR(s_handle, NOTIFY_DMA_DONE, eSetBits, &woken);
-    portYIELD_FROM_ISR(woken);
+    if (hi2c->Instance == I2C1 && s_handle != NULL) {
+        BaseType_t woken = pdFALSE;
+        xTaskNotifyFromISR(s_handle, NOTIFY_DMA_DONE, eSetBits, &woken);
+        portYIELD_FROM_ISR(woken);
+    } else if (hi2c->Instance == I2C3) {
+        baro_i2c_rx_done_from_isr();
+    }
 }
 
 void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
 {
-    if (hi2c->Instance != I2C1 || s_handle == NULL) return;
-
-    BaseType_t woken = pdFALSE;
-    xTaskNotifyFromISR(s_handle, NOTIFY_I2C_ERROR, eSetBits, &woken);
-    portYIELD_FROM_ISR(woken);
+    if (hi2c->Instance == I2C1 && s_handle != NULL) {
+        BaseType_t woken = pdFALSE;
+        xTaskNotifyFromISR(s_handle, NOTIFY_I2C_ERROR, eSetBits, &woken);
+        portYIELD_FROM_ISR(woken);
+    } else if (hi2c->Instance == I2C3) {
+        baro_i2c_error_from_isr();
+    }
 }
