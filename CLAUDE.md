@@ -46,16 +46,16 @@ FreeRtos_project/       ← aktif proje (STM32CubeIDE .ioc + HAL + FreeRTOS)
 | `Core/Src/telemetry_task.c` / `Inc/telemetry_task.h` | UART2 DMA binary telemetry (50 Hz) | ✅ Tamamlandı |
 | `Core/Src/bme280.c` / `Inc/bme280.h` | BME280 driver: init, config, DMA başlat, parse | ✅ Tamamlandı |
 | `Core/Inc/baro_snapshot.h` | `baro_snapshot_t` struct + `baro_snapshot_peek()` | ✅ Tamamlandı |
-| `Core/Src/baro_task.c` / `Inc/baro_task.h` | Baro pipeline task (10 Hz, I2C3 DMA) | ✅ Tamamlandı |
+| `Core/Src/baro_task.c` / `Inc/baro_task.h` | Baro pipeline task (10 Hz, I2C3 DMA) + Kalman tetikleme | ✅ Tamamlandı |
+| `Core/Src/alt_kalman.c` / `Inc/alt_kalman.h` | 3-state altitude Kalman filtresi (baro + IMU füzyonu) | ✅ Tamamlandı |
+| `Core/Inc/alt_snapshot.h` | `alt_snapshot_t` struct + `alt_snapshot_peek()` | ✅ Tamamlandı |
 | `Middlewares/SEGGER/` | SEGGER RTT + SystemView middleware | ✅ Post-Mortem modu aktif |
 
 ### Henüz kapsam dışı
 
-* Altitude Kalman filtresi (baro + IMU füzyonu)
 * GNSS (L86)
 * LoRa (E22)
 * Flight state machine
-* Kalman altitude filtresi
 * IWDG watchdog
 * Gyro offset kalibrasyonu
 * Eksen haritalaması (PCB montajına göre ayarlanacak)
@@ -81,7 +81,7 @@ FreeRtos_project/       ← aktif proje (STM32CubeIDE .ioc + HAL + FreeRTOS)
 | Task | Öncelik | Stack | Görev |
 | ---- | ------- | ----- | ----- |
 | IMU | `osPriorityHigh` | 512 × 4 B | Sensör okuma + Mahony + snapshot publish |
-| Baro | `osPriorityBelowNormal` | 256 × 4 B | 10 Hz I2C3 DMA baro okuma + snapshot |
+| Baro | `osPriorityBelowNormal` | 512 × 4 B | 10 Hz I2C3 DMA baro okuma + Kalman güncelleme + snapshot |
 | Telemetry | `osPriorityBelowNormal` | 256 × 4 B | 50 Hz UART2 DMA TX |
 
 ## Donanım haritası
@@ -108,7 +108,7 @@ cmake --build build/Debug
 
 Çıktı: `FreeRtos_project/build/Debug/*.elf` + `.hex` + `.bin`
 
-Mevcut boyutlar: FLASH ~52 KB / 512 KB (%10), RAM ~22 KB + ~41 KB SEGGER buffer = ~63 KB / 128 KB (%49).
+Mevcut boyutlar: FLASH ~65 KB / 512 KB (%12), RAM ~64 KB / 128 KB (%49).
 
 ## SEGGER SystemView — Post-Mortem modu
 JTAG/canlı bağlantı olmadan çalışır. Sistem çalışırken olaylar RAM'deki ring buffer'a yazılır. Sonra debugger ile buffer dump edilip SystemView masaüstü uygulamasında açılır.
@@ -121,7 +121,7 @@ JTAG/canlı bağlantı olmadan çalışır. Sistem çalışırken olaylar RAM'de
 | `bmi088.c` | BMI088 driver | ✅ Yeniden yazıldı, port edildi |
 | `queternion.c` | Mahony quaternion | ✅ `mahony.c` olarak port edildi |
 | `bme280.c` | BME280 driver | ✅ Yeniden yazıldı, I2C3 DMA ile port edildi |
-| `kalman.c` | Altitude Kalman filter | Sonraki aşama |
+| `kalman.c` | Altitude Kalman filter | ✅ `alt_kalman.c` olarak port edildi, sadeleştirildi |
 | `flight_algorithm.c` | Flight state machine | Sonraki aşama |
 | `sensor_fusion.c` | Fusion mantığı | Sonraki aşama |
 | `e22_lib.c` | LoRa telemetry | Sonraki aşama |
@@ -137,7 +137,7 @@ JTAG/canlı bağlantı olmadan çalışır. Sistem çalışırken olaylar RAM'de
 4. ✅ Telemetry task: snapshot → UART2 DMA binary frame.
 5. ✅ SEGGER SystemView Post-Mortem modu: ring buffer kaydı + GDB dump.
 6. ✅ BME280 driver ve baro task (I2C3 DMA, 10 Hz).
-7. Altitude Kalman filtresi (baro + IMU füzyonu).
+7. ✅ Altitude Kalman filtresi (baro + IMU füzyonu, 10 Hz, baro_task içinde).
 8. GNSS task.
 9. Flight state machine.
 10. LoRa telemetry.
