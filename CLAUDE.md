@@ -43,7 +43,7 @@ FreeRtos_project/       ← aktif proje (STM32CubeIDE .ioc + HAL + FreeRTOS)
 | `Core/Src/mahony.c` / `Inc/mahony.h` | Mahony AHRS filtresi (6DOF) | ✅ Tamamlandı |
 | `Core/Src/imu_task.c` / `Inc/imu_task.h` | IMU pipeline task | ✅ Tamamlandı |
 | `Core/Inc/imu_snapshot.h` | `imu_snapshot_t` struct + `imu_snapshot_peek()` | ✅ Tamamlandı |
-| `Core/Src/telemetry_task.c` / `Inc/telemetry_task.h` | UART2 DMA binary telemetry (50 Hz) | ✅ Tamamlandı |
+| `Core/Src/telemetry_task.c` / `Inc/telemetry_task.h` | UART2 DMA binary telemetry (50 Hz, addDataPacketNormal formatı) | ✅ Tamamlandı |
 | `Core/Src/bme280.c` / `Inc/bme280.h` | BME280 driver: init, config, DMA başlat, parse | ✅ Tamamlandı |
 | `Core/Inc/baro_snapshot.h` | `baro_snapshot_t` struct + `baro_snapshot_peek()` | ✅ Tamamlandı |
 | `Core/Src/baro_task.c` / `Inc/baro_task.h` | Baro pipeline task (10 Hz, I2C3 DMA) + Kalman tetikleme | ✅ Tamamlandı |
