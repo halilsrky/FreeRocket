@@ -52,10 +52,10 @@ HAL_StatusTypeDef bme280_init(I2C_HandleTypeDef *hi2c, bme280_calib_t *calib);
 HAL_StatusTypeDef bme280_config(I2C_HandleTypeDef *hi2c);
 
 /*
- * Start non-blocking DMA read of 8 raw ADC bytes (0xF7–0xFE).
- * Completion triggers HAL_I2C_MemRxCpltCallback.
+ * Blocking read of 8 raw ADC bytes (0xF7–0xFE).
+ * 100kHz I2C, 8 bytes → ~1ms. Baro 10 Hz döngüsünde kullanılabilir.
  */
-HAL_StatusTypeDef bme280_start_read_dma(I2C_HandleTypeDef *hi2c, uint8_t *buf);
+HAL_StatusTypeDef bme280_read(I2C_HandleTypeDef *hi2c, uint8_t *buf);
 
 /*
  * Parse 8 raw bytes into physical values using calibration coefficients.

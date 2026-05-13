@@ -82,10 +82,10 @@ HAL_StatusTypeDef bme280_config(I2C_HandleTypeDef *hi2c)
     return ret;
 }
 
-HAL_StatusTypeDef bme280_start_read_dma(I2C_HandleTypeDef *hi2c, uint8_t *buf)
+HAL_StatusTypeDef bme280_read(I2C_HandleTypeDef *hi2c, uint8_t *buf)
 {
-    return HAL_I2C_Mem_Read_DMA(hi2c, BME280_I2C_ADDR, BME280_REG_PRESS_MSB,
-                                I2C_MEMADD_SIZE_8BIT, buf, 8);
+    return HAL_I2C_Mem_Read(hi2c, BME280_I2C_ADDR, BME280_REG_PRESS_MSB,
+                            I2C_MEMADD_SIZE_8BIT, buf, 8, 20);
 }
 
 void bme280_parse(const uint8_t *buf, const bme280_calib_t *calib, bme280_data_t *out)
