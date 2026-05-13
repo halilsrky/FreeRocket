@@ -1,4 +1,5 @@
 #include "imu_task.h"
+#include "bmi088_defs.h"
 #include "imu_snapshot.h"
 #include "bmi088.h"
 #include "mahony.h"
@@ -20,9 +21,9 @@
 static const bmi088_config_t k_bmi_cfg = {
     .hi2c       = &hi2c1,
     .acc_range  = ACC_RANGE_12G,
-    .acc_odr    = ACC_ODR_400,
+    .acc_odr    = ACC_ODR_100,
     .gyro_range = GYRO_RANGE_2000DPS,
-    .gyro_bw    = GYRO_BW_47HZ_ODR400,
+    .gyro_bw    = GYRO_BW_12HZ_ODR100,
 };
 
 /* ── Module-private state ── */

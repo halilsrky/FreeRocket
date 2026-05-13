@@ -54,9 +54,8 @@ static void telem_task(void *arg)
         vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(TELEM_PERIOD_MS));
 
         imu_snapshot_t snap;
-        if (!imu_snapshot_peek(&snap)) continue;   /* veri henüz yok */
+        if (!imu_snapshot_peek(&snap)) continue;
 
-        /* Frame doldur */
         s_frame.magic[0] = FRAME_MAGIC_0;
         s_frame.magic[1] = FRAME_MAGIC_1;
         s_frame.ts_ms    = snap.ts_ms;
@@ -71,20 +70,9 @@ static void telem_task(void *arg)
         s_frame.yaw      = snap.euler.yaw;
         s_frame.crc      = frame_crc(&s_frame);
 
-        /* DMA TX başlat — blocking değil */
-        if (HAL_UART_Transmit_DMA(&huart2, (uint8_t *)&s_frame,
-                                  sizeof(s_frame)) != HAL_OK) {
-            continue;   /* önceki TX henüz bitmemiş, bu döngüyü atla */
-        }
+        HAL_UART_Transmit_DMA(&huart2, (uint8_t *)&s_frame, sizeof(s_frame));
+    }   
 
-        /*
-         * TX tamamlanmasını bekle. Timeout = bir tam period:
-         * eğer bitmezse bir sonraki döngüde HAL_BUSY döner ve atlanır.
-         * Bu bekleyiş IMU task'ını hiç etkilemez.
-         */
-        uint32_t bits = 0;
-        xTaskNotifyWait(0U, UINT32_MAX, &bits, pdMS_TO_TICKS(TELEM_PERIOD_MS));
-    }
 }
 
 /* ── HAL callback (ISR context) ── */
