@@ -115,9 +115,11 @@ void StartDefaultTask(void *argument)
 {
   /* USER CODE BEGIN StartDefaultTask */
   /* Infinite loop */
+	  SEGGER_SYSVIEW_Start();
+
   for(;;)
   {
-    osDelay(1);
+    osDelay(100000);
   }
   /* USER CODE END StartDefaultTask */
 }
