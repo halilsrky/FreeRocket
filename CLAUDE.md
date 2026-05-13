@@ -43,16 +43,19 @@ FreeRtos_project/       ← aktif proje (STM32CubeIDE .ioc + HAL + FreeRTOS)
 | `Core/Src/mahony.c` / `Inc/mahony.h` | Mahony AHRS filtresi (6DOF) | ✅ Tamamlandı |
 | `Core/Src/imu_task.c` / `Inc/imu_task.h` | IMU pipeline task | ✅ Tamamlandı |
 | `Core/Inc/imu_snapshot.h` | `imu_snapshot_t` struct + `imu_snapshot_peek()` | ✅ Tamamlandı |
-| `Core/Src/telemetry_task.c` / `Inc/telemetry_task.h` | UART2 DMA binary telemetry (50 Hz) | ✅ Tamamlandı |
+| `Core/Src/telemetry_task.c` / `Inc/telemetry_task.h` | UART2 DMA binary telemetry (50 Hz, addDataPacketNormal formatı) | ✅ Tamamlandı |
+| `Core/Src/bme280.c` / `Inc/bme280.h` | BME280 driver: init, config, DMA başlat, parse | ✅ Tamamlandı |
+| `Core/Inc/baro_snapshot.h` | `baro_snapshot_t` struct + `baro_snapshot_peek()` | ✅ Tamamlandı |
+| `Core/Src/baro_task.c` / `Inc/baro_task.h` | Baro pipeline task (10 Hz, I2C3 DMA) + Kalman tetikleme | ✅ Tamamlandı |
+| `Core/Src/alt_kalman.c` / `Inc/alt_kalman.h` | 3-state altitude Kalman filtresi (baro + IMU füzyonu) | ✅ Tamamlandı |
+| `Core/Inc/alt_snapshot.h` | `alt_snapshot_t` struct + `alt_snapshot_peek()` | ✅ Tamamlandı |
 | `Middlewares/SEGGER/` | SEGGER RTT + SystemView middleware | ✅ Post-Mortem modu aktif |
 
 ### Henüz kapsam dışı
 
-* BME280 baro driver
 * GNSS (L86)
 * LoRa (E22)
 * Flight state machine
-* Kalman altitude filtresi
 * IWDG watchdog
 * Gyro offset kalibrasyonu
 * Eksen haritalaması (PCB montajına göre ayarlanacak)
@@ -72,59 +75,13 @@ FreeRtos_project/       ← aktif proje (STM32CubeIDE .ioc + HAL + FreeRTOS)
   * Semaphore: kullanılmıyor
 * **Mode geçişleri explicit state machine ile yönetilecek.**
 
-## IMU pipeline
-
-```
-EXTI3 (ACC DRDY, PB3)  ──→ HAL_GPIO_EXTI_Callback
-EXTI4 (GYRO DRDY, PB4) ──→ HAL_GPIO_EXTI_Callback
-                                    │
-                        xTaskNotifyFromISR (NOTIFY_ACC/GYRO_DRDY)
-                                    │
-                              imuTask wakes
-                                    │
-                    bmi088_start_accel_dma / bmi088_start_gyro_dma
-                      (I2C1 paylaşımlı — dma_state makinesi sıralar)
-                                    │
-                        HAL_I2C_MemRxCpltCallback
-                                    │
-                        xTaskNotifyFromISR (NOTIFY_DMA_DONE)
-                                    │
-                              imuTask wakes
-                                    │
-                        bmi088_parse_accel / bmi088_parse_gyro
-                                    │
-                       acc_fresh && gyro_fresh?
-                                    │
-                           mahony_update()
-                                    │
-                       xQueueOverwrite(s_snapshot_q, &snap)
-```
-
-## Telemetry pipeline
-
-```
-telemetryTask (50 Hz, osPriorityBelowNormal)
-    │
-    ├── vTaskDelayUntil(20 ms)
-    ├── imu_snapshot_peek(&snap)      ← kopyalar, bloklamaz
-    ├── frame doldur (44 byte binary)
-    ├── HAL_UART_Transmit_DMA(&huart2, ...)
-    └── xTaskNotifyWait(TX_DONE, 20 ms timeout)
-         │
-    HAL_UART_TxCpltCallback → xTaskNotifyFromISR
-```
-
-**Frame formatı (44 byte, little-endian):**
-```
-[AA 55][ts_ms:u32][ax:f][ay:f][az:f][gx:f][gy:f][gz:f][roll:f][pitch:f][yaw:f][crc:u16]
-```
-Python: `struct.unpack('<2sI3f3f3fH', data)`
 
 ## Task modeli
 
 | Task | Öncelik | Stack | Görev |
 | ---- | ------- | ----- | ----- |
 | IMU | `osPriorityHigh` | 512 × 4 B | Sensör okuma + Mahony + snapshot publish |
+| Baro | `osPriorityBelowNormal` | 512 × 4 B | 10 Hz I2C3 DMA baro okuma + Kalman güncelleme + snapshot |
 | Telemetry | `osPriorityBelowNormal` | 256 × 4 B | 50 Hz UART2 DMA TX |
 
 ## Donanım haritası
@@ -151,7 +108,7 @@ cmake --build build/Debug
 
 Çıktı: `FreeRtos_project/build/Debug/*.elf` + `.hex` + `.bin`
 
-Mevcut boyutlar: FLASH ~52 KB / 512 KB (%10), RAM ~22 KB + ~41 KB SEGGER buffer = ~63 KB / 128 KB (%49).
+Mevcut boyutlar: FLASH ~65 KB / 512 KB (%12), RAM ~64 KB / 128 KB (%49).
 
 ## SEGGER SystemView — Post-Mortem modu
 JTAG/canlı bağlantı olmadan çalışır. Sistem çalışırken olaylar RAM'deki ring buffer'a yazılır. Sonra debugger ile buffer dump edilip SystemView masaüstü uygulamasında açılır.
@@ -163,8 +120,8 @@ JTAG/canlı bağlantı olmadan çalışır. Sistem çalışırken olaylar RAM'de
 | ----- | ------- | ----- |
 | `bmi088.c` | BMI088 driver | ✅ Yeniden yazıldı, port edildi |
 | `queternion.c` | Mahony quaternion | ✅ `mahony.c` olarak port edildi |
-| `bme280.c` | BME280 driver | Sonraki aşama |
-| `kalman.c` | Altitude Kalman filter | Sonraki aşama |
+| `bme280.c` | BME280 driver | ✅ Yeniden yazıldı, I2C3 DMA ile port edildi |
+| `kalman.c` | Altitude Kalman filter | ✅ `alt_kalman.c` olarak port edildi, sadeleştirildi |
 | `flight_algorithm.c` | Flight state machine | Sonraki aşama |
 | `sensor_fusion.c` | Fusion mantığı | Sonraki aşama |
 | `e22_lib.c` | LoRa telemetry | Sonraki aşama |
@@ -179,10 +136,11 @@ JTAG/canlı bağlantı olmadan çalışır. Sistem çalışırken olaylar RAM'de
 3. ✅ IMU pipeline: DRDY IRQ → DMA → parse → Mahony → snapshot.
 4. ✅ Telemetry task: snapshot → UART2 DMA binary frame.
 5. ✅ SEGGER SystemView Post-Mortem modu: ring buffer kaydı + GDB dump.
-6. BME280 driver ve altitude Kalman filtresi.
-7. GNSS task.
-8. Flight state machine.
-9. LoRa telemetry.
+6. ✅ BME280 driver ve baro task (I2C3 DMA, 10 Hz).
+7. ✅ Altitude Kalman filtresi (baro + IMU füzyonu, 10 Hz, baro_task içinde).
+8. GNSS task.
+9. Flight state machine.
+10. LoRa telemetry.
 
 ## Şu anki kritik hatalar (old_project'ten gelen, yeni projede tekrar edilmeyecek)
 
