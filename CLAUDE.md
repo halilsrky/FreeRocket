@@ -1,6 +1,6 @@
 # SKYRTOS — STM32F446 NUCLEO Flight Computer
 
-Halil'in bitirme projesi. BMI088 IMU + BME280 baro + GNSS + LoRa içeren roket flight computer yazılımı.
+Halil'in bitirme projesi. BMI088 IMU + BME280 baro + GNSS  içeren roket flight computer yazılımı.
 
 **Karar değişti:** Kendi mini RTOS kernel'ımızı yazmayacağız.
 
@@ -49,11 +49,13 @@ FreeRtos_project/       ← aktif proje (STM32CubeIDE .ioc + HAL + FreeRTOS)
 | `Core/Src/baro_task.c` / `Inc/baro_task.h` | Baro pipeline task (10 Hz, I2C3 DMA) + Kalman tetikleme | ✅ Tamamlandı |
 | `Core/Src/alt_kalman.c` / `Inc/alt_kalman.h` | 3-state altitude Kalman filtresi (baro + IMU füzyonu) | ✅ Tamamlandı |
 | `Core/Inc/alt_snapshot.h` | `alt_snapshot_t` struct + `alt_snapshot_peek()` | ✅ Tamamlandı |
+| `Core/Src/gnss_task.c` / `Inc/gnss_task.h` | GNSS task: baud switch + circular DMA RX + NMEA parse + snapshot | ✅ Tamamlandı |
+| `Core/Inc/gnss_snapshot.h` | `gnss_snapshot_t` struct + `gnss_snapshot_peek()` | ✅ Tamamlandı |
 | `Middlewares/SEGGER/` | SEGGER RTT + SystemView middleware | ✅ Post-Mortem modu aktif |
 
 ### Henüz kapsam dışı
 
-* GNSS (L86)
+* ~~GNSS (L86)~~
 * LoRa (E22)
 * Flight state machine
 * IWDG watchdog
@@ -82,6 +84,7 @@ FreeRtos_project/       ← aktif proje (STM32CubeIDE .ioc + HAL + FreeRTOS)
 | ---- | ------- | ----- | ----- |
 | IMU | `osPriorityHigh` | 512 × 4 B | Sensör okuma + Mahony + snapshot publish |
 | Baro | `osPriorityBelowNormal` | 512 × 4 B | 10 Hz I2C3 DMA baro okuma + Kalman güncelleme + snapshot |
+| GNSS | `osPriorityBelowNormal` | 512 × 4 B | USART6 circular DMA RX + NMEA parse + snapshot (1 Hz) |
 | Telemetry | `osPriorityBelowNormal` | 256 × 4 B | 50 Hz UART2 DMA TX |
 
 ## Donanım haritası
@@ -124,9 +127,7 @@ JTAG/canlı bağlantı olmadan çalışır. Sistem çalışırken olaylar RAM'de
 | `kalman.c` | Altitude Kalman filter | ✅ `alt_kalman.c` olarak port edildi, sadeleştirildi |
 | `flight_algorithm.c` | Flight state machine | Sonraki aşama |
 | `sensor_fusion.c` | Fusion mantığı | Sonraki aşama |
-| `e22_lib.c` | LoRa telemetry | Sonraki aşama |
-| `l86_gnss.c` | GNSS | Sonraki aşama |
-| `data_logger.c` | SD write buffering | SD kart bu projede yok |
+| `l86_gnss.c` | GNSS | ✅ `gnss_task.c` olarak port edildi, FreeRTOS task mimarisine uyarlandı |
 | `uart_handler.c` | UART komut ayrıştırma | Sonraki aşama |
 
 ## Öncelikli yol haritası
@@ -138,7 +139,7 @@ JTAG/canlı bağlantı olmadan çalışır. Sistem çalışırken olaylar RAM'de
 5. ✅ SEGGER SystemView Post-Mortem modu: ring buffer kaydı + GDB dump.
 6. ✅ BME280 driver ve baro task (I2C3 DMA, 10 Hz).
 7. ✅ Altitude Kalman filtresi (baro + IMU füzyonu, 10 Hz, baro_task içinde).
-8. GNSS task.
+8. ✅ GNSS task (USART6 circular DMA, NMEA parse, snapshot).
 9. Flight state machine.
 10. LoRa telemetry.
 

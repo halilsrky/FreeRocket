@@ -3,6 +3,7 @@
 #include "imu_task.h"
 #include "baro_task.h"
 #include "telemetry_task.h"
+#include "gnss_task.h"
 #include "cmsis_os.h"
 #include "SEGGER_SYSVIEW.h"
 
@@ -12,6 +13,7 @@ void Application_Start(void)
 
     imu_task_create();
     baro_task_create();
+    gnss_task_create();
     telemetry_task_create();
 }
 
