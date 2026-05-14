@@ -11,7 +11,7 @@
 #define BURNOUT_AVERT_THR    0.0f   /* m/s²  — Kalman dikey ivmesi < 0 → motor söndü */
 #define BURNOUT_CONFIRM         5   /* örnek — 10 Hz'de 500 ms */
 #define BURNOUT_TIMEOUT_MS   8000   /* ms    — max boost süresi */
-#define MIN_ARM_ALT_M      100.0f   /* m AGL — arming irtifası */
+#define MIN_ARM_ALT_M      1200.0f   /* m AGL — arming irtifası */
 #define MAX_TILT_DEG        70.0f   /* derece — acil drogue açı eşiği */
 #define APOGEE_CONFIRM          5   /* örnek — 10 Hz'de 500 ms */
 #define MAIN_ALT_M         300.0f   /* m AGL — ana paraşüt irtifası */

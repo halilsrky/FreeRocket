@@ -56,8 +56,9 @@ class SUTScreen(tk.Toplevel):
         # Data storage
         self.tx_time_data = deque(maxlen=1000)
         self.tx_altitude_data = deque(maxlen=1000)
-        self.rx_time_data = deque(maxlen=1000)
-        self.rx_altitude_data = deque(maxlen=1000)
+        # Keep full RX history to avoid a sliding window at higher RX rates.
+        self.rx_time_data = deque()
+        self.rx_altitude_data = deque()
         self.events_tx: List[Tuple[float, int, float]] = []
         self.events_rx: List[Tuple[float, int, float]] = []
         self.start_time = time.time()
