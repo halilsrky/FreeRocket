@@ -3,6 +3,7 @@
 #include "alt_snapshot.h"
 #include "alt_kalman.h"
 #include "imu_snapshot.h"
+#include "flight_sm.h"
 #include "bme280.h"
 #include "i2c.h"
 #include "FreeRTOS.h"
@@ -21,6 +22,8 @@ void baro_task_create(void)
 {
     s_baro_q = xQueueCreate(1, sizeof(baro_snapshot_t));
     s_alt_q  = xQueueCreate(1, sizeof(alt_snapshot_t));
+
+    flight_sm_init();
 
     static const osThreadAttr_t attr = {
         .name       = "BARO",
@@ -112,22 +115,23 @@ static void baro_task(void *arg)
         float dt = (float)(now - last_tick) * 0.001f;
         last_tick = now;
 
-        /* IMU dikey ivmesini al; snapshot yoksa 0 kullan */
-        float avert = 0.0f;
-        imu_snapshot_t imu;
-        if (imu_snapshot_peek(&imu)) {
-            avert = accel_vertical(&imu);
-        }
+        /* IMU snapshot — hem accel_vertical hem flight_sm için kullanılır */
+        imu_snapshot_t        imu_snap;
+        const imu_snapshot_t *imu_ptr = imu_snapshot_peek(&imu_snap) ? &imu_snap : NULL;
+
+        float avert = imu_ptr ? accel_vertical(imu_ptr) : 0.0f;
 
         float alt_rel = data.altitude - alt_ref;
         float filtered_alt = alt_kalman_update(&kf, alt_rel, avert, dt);
 
         alt_snapshot_t alt_snap = {
-            .ts_ms       = now,
+            .ts_ms        = now,
             .altitude_rel = filtered_alt,
             .velocity     = alt_kalman_velocity(&kf),
             .accel_vert   = alt_kalman_accel(&kf),
         };
         xQueueOverwrite(s_alt_q, &alt_snap);
+
+        flight_sm_update(&alt_snap, imu_ptr);
     }
 }
