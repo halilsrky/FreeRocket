@@ -1,0 +1,16 @@
+Ö-UKB Gürültü Test Verileri - Senaryo Özeti
+Oluşturulma tarihi: 2025-09-03 15:35:47
+Girdi dosyası: ukb_test_veriler.csv
+
+Senaryo 1: Az gürültülü yükseklik
+Dosya: ukb_gurultu_senaryolari/senaryo1_az_gurultu_yukseklik_20250903_153543.csv
+
+Senaryo 2: Çok gürültülü yükseklik
+Dosya: ukb_gurultu_senaryolari/senaryo2_cok_gurultu_yukseklik_20250903_153543.csv
+
+Senaryo 3: Az gürültülü yükseklik ve ivme
+Dosya: ukb_gurultu_senaryolari/senaryo3_az_gurultu_yukseklik_ivme_20250903_153543.csv
+
+Senaryo 4: Çok gürültülü yükseklik ve az gürültülü ivme
+Dosya: ukb_gurultu_senaryolari/senaryo4_cok_gurultu_yukseklik_az_gurultu_ivme_20250903_153543.csv
+

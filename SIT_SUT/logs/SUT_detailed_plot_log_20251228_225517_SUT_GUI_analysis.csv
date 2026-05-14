@@ -1,0 +1,25 @@
+Time_Seconds,Altitude_Meters,Event_Type,Event_Message
+0.126,0.00,,
+0.228,0.00,,
+0.357,0.01,,
+0.458,0.02,,
+0.559,0.06,,
+0.660,0.13,,
+0.761,0.24,,
+0.863,0.39,,
+0.964,0.57,,
+1.065,0.79,,
+1.166,10.42,,
+1.267,10.42,,
+1.368,13.31,,
+1.470,16.54,,
+1.571,20.10,,
+1.674,24.00,,
+1.778,28.22,,
+1.879,3.28,,
+1.980,37.64,,
+
+Event_Log,,,
+Time_Seconds,Status_16bit,Event_Description,Altitude_At_Event
+0.522,0x0001,Roket kalkışı algılandı,0.06
+1.531,0x0003,Motor yanma önlem süresi doldu,20.10
