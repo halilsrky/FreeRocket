@@ -178,6 +178,7 @@ void addDataPacketSit(bme_sample_t* BME, bmi_sample_t* BMI){
   sit_paket[26] = jiroskop_y_float32_uint8_donusturucu.array[2];
   sit_paket[27] = jiroskop_y_float32_uint8_donusturucu.array[1];
   sit_paket[28] = jiroskop_y_float32_uint8_donusturucu.array[0];
+
   FLOAT32_UINT8_DONUSTURUCU jiroskop_z_float32_uint8_donusturucu;
   jiroskop_z_float32_uint8_donusturucu.sayi = (float)round2(BMI->yaw); // Jiroskop Z degerinin atamasini yapiyoruz.
   sit_paket[29] = jiroskop_z_float32_uint8_donusturucu.array[3];
@@ -185,9 +186,39 @@ void addDataPacketSit(bme_sample_t* BME, bmi_sample_t* BMI){
   sit_paket[31] = jiroskop_z_float32_uint8_donusturucu.array[1];
   sit_paket[32] = jiroskop_z_float32_uint8_donusturucu.array[0];
 
-  sit_paket[33] = check_sum_hesapla_sit(33); // Check_sum = check_sum_hesapla();
-  sit_paket[34] = 0x0D;
-  sit_paket[35] = 0x0A;
+    FLOAT32_UINT8_DONUSTURUCU roket_gps_irtifa_float32_uint8_donusturucu;
+  roket_gps_irtifa_float32_uint8_donusturucu.sayi = (0); // Roket GPS Irtifa degerinin atamasini yapiyoruz.
+  sit_paket[33] = roket_gps_irtifa_float32_uint8_donusturucu.array[0];
+  sit_paket[34] = roket_gps_irtifa_float32_uint8_donusturucu.array[1];
+  sit_paket[35] = roket_gps_irtifa_float32_uint8_donusturucu.array[2];
+  sit_paket[36] = roket_gps_irtifa_float32_uint8_donusturucu.array[3];
+
+   // Roket Enlem
+  FLOAT32_UINT8_DONUSTURUCU roket_enlem_float32_uint8_donusturucu;
+  roket_enlem_float32_uint8_donusturucu.sayi = (0); // Roket enlem degerinin atamasini yapiyoruz.
+  sit_paket[37] = roket_enlem_float32_uint8_donusturucu.array[0];
+  sit_paket[38] = roket_enlem_float32_uint8_donusturucu.array[1];
+  sit_paket[39] = roket_enlem_float32_uint8_donusturucu.array[2];
+  sit_paket[40] = roket_enlem_float32_uint8_donusturucu.array[3];
+
+  // Roket Boylam
+  FLOAT32_UINT8_DONUSTURUCU roket_boylam_irtifa_float32_uint8_donusturucu;
+	roket_boylam_irtifa_float32_uint8_donusturucu.sayi = (0); // Roket boylam degerinin atamasini yapiyoruz.
+  sit_paket[41] = roket_boylam_irtifa_float32_uint8_donusturucu.array[0];
+  sit_paket[42] = roket_boylam_irtifa_float32_uint8_donusturucu.array[1];
+  sit_paket[43] = roket_boylam_irtifa_float32_uint8_donusturucu.array[2];
+  sit_paket[44] = roket_boylam_irtifa_float32_uint8_donusturucu.array[3];
+
+  FLOAT32_UINT8_DONUSTURUCU hiz_float32_uint8_donusturucu;
+  hiz_float32_uint8_donusturucu.sayi = (sensor->velocity); // hiz degerinin atamasini yapiyoruz.
+  sit_paket[45] = hiz_float32_uint8_donusturucu.array[0];
+  sit_paket[46] = hiz_float32_uint8_donusturucu.array[1];
+  sit_paket[47] = hiz_float32_uint8_donusturucu.array[2];
+  sit_paket[48] = hiz_float32_uint8_donusturucu.array[3];
+
+  sit_paket[49] = check_sum_hesapla_sit(49); // Check_sum = check_sum_hesapla();
+  sit_paket[50] = 0x0D;
+  sit_paket[51] = 0x0A;
 
 }
 
