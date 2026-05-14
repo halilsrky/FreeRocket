@@ -90,6 +90,20 @@ void mahony_update(mahony_t *m,
     q[3] *= recip_norm;
 }
 
+float mahony_get_theta(const mahony_t *m)
+{
+    const float *q = m->q;
+    /* Rotasyon matrisinin 3. sütunu (body Z ekseninin world frame karşılığı) */
+    float r13 = 2.0f * (q[1]*q[3] + q[2]*q[0]);
+    float r23 = 2.0f * (q[2]*q[3] - q[1]*q[0]);
+    float r33 = 1.0f - 2.0f * (q[1]*q[1] + q[2]*q[2]);
+
+    float mag  = sqrtf(r13*r13 + r23*r23 + r33*r33);
+    float safe = (mag > 1e-6f) ? (r33 / mag) : 1.0f;
+    safe = fmaxf(-1.0f, fminf(1.0f, safe));
+    return acosf(safe) * 57.295779513f;
+}
+
 void mahony_get_euler(const mahony_t *m,
                       float *roll, float *pitch, float *yaw)
 {

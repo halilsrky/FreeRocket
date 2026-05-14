@@ -51,13 +51,14 @@ FreeRtos_project/       ← aktif proje (STM32CubeIDE .ioc + HAL + FreeRTOS)
 | `Core/Inc/alt_snapshot.h` | `alt_snapshot_t` struct + `alt_snapshot_peek()` | ✅ Tamamlandı |
 | `Core/Src/gnss_task.c` / `Inc/gnss_task.h` | GNSS task: baud switch + circular DMA RX + NMEA parse + snapshot | ✅ Tamamlandı |
 | `Core/Inc/gnss_snapshot.h` | `gnss_snapshot_t` struct + `gnss_snapshot_peek()` | ✅ Tamamlandı |
+| `Core/Src/flight_sm.c` / `Inc/flight_sm.h` | Flight state machine: 7 faz, baro_task'tan 10 Hz tetikleme | ✅ Tamamlandı |
 | `Middlewares/SEGGER/` | SEGGER RTT + SystemView middleware | ✅ Post-Mortem modu aktif |
 
 ### Henüz kapsam dışı
 
 * ~~GNSS (L86)~~
 * LoRa (E22)
-* Flight state machine
+* ~~Flight state machine~~
 * IWDG watchdog
 * Gyro offset kalibrasyonu
 * Eksen haritalaması (PCB montajına göre ayarlanacak)
@@ -111,7 +112,7 @@ cmake --build build/Debug
 
 Çıktı: `FreeRtos_project/build/Debug/*.elf` + `.hex` + `.bin`
 
-Mevcut boyutlar: FLASH ~65 KB / 512 KB (%12), RAM ~64 KB / 128 KB (%49).
+Mevcut boyutlar: FLASH ~75 KB / 512 KB (%14), RAM ~66 KB / 128 KB (%50).
 
 ## SEGGER SystemView — Post-Mortem modu
 JTAG/canlı bağlantı olmadan çalışır. Sistem çalışırken olaylar RAM'deki ring buffer'a yazılır. Sonra debugger ile buffer dump edilip SystemView masaüstü uygulamasında açılır.
@@ -140,8 +141,8 @@ JTAG/canlı bağlantı olmadan çalışır. Sistem çalışırken olaylar RAM'de
 6. ✅ BME280 driver ve baro task (I2C3 DMA, 10 Hz).
 7. ✅ Altitude Kalman filtresi (baro + IMU füzyonu, 10 Hz, baro_task içinde).
 8. ✅ GNSS task (USART6 circular DMA, NMEA parse, snapshot).
-9. Flight state machine.
-10. LoRa telemetry.
+9. ✅ Flight state machine (`flight_sm.c`, 7 faz, baro_task 10 Hz tetiklemeli).
+10. SIT SUT testleri.
 
 ## Şu anki kritik hatalar (old_project'ten gelen, yeni projede tekrar edilmeyecek)
 
