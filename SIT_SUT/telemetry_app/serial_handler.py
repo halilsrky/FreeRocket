@@ -6,7 +6,7 @@ import serial
 import struct
 import threading
 import time
-from typing import Optional, Callable, List
+from typing import Optional, Callable, List, Tuple
 from dataclasses import dataclass
 from queue import Queue
 
@@ -20,7 +20,9 @@ PACKET_FOOTER = bytes([0x0D, 0x0A])
 
 SIT_FLOAT_COUNT = 12
 SIT_FLOAT_COUNT_LEGACY = 8
-SIT_PACKET_SIZE = 1 + (SIT_FLOAT_COUNT * 4) + 1 + 2
+SIT_STATUS_BYTES = 2
+SIT_PACKET_SIZE = 1 + (SIT_FLOAT_COUNT * 4) + SIT_STATUS_BYTES + 1 + 2
+SIT_PACKET_SIZE_NO_STATUS = 1 + (SIT_FLOAT_COUNT * 4) + 1 + 2
 SIT_PACKET_SIZE_LEGACY = 1 + (SIT_FLOAT_COUNT_LEGACY * 4) + 1 + 2
 
 # Command Packets
@@ -41,6 +43,7 @@ class SerialHandler:
         
         # Callbacks
         self._telemetry_callback: Optional[Callable[[TelemetryPacket], None]] = None
+        self._telemetry_rx_callback: Optional[Callable[[TelemetryPacket], None]] = None
         self._status_callback: Optional[Callable[[StatusPacket], None]] = None
         self._error_callback: Optional[Callable[[str], None]] = None
         
@@ -65,6 +68,9 @@ class SerialHandler:
     
     def set_telemetry_callback(self, callback: Callable[[TelemetryPacket], None]):
         self._telemetry_callback = callback
+
+    def set_telemetry_rx_callback(self, callback: Callable[[TelemetryPacket], None]):
+        self._telemetry_rx_callback = callback
     
     def set_status_callback(self, callback: Callable[[StatusPacket], None]):
         self._status_callback = callback
@@ -204,19 +210,50 @@ class SerialHandler:
                     consumed = 0
 
                     if len(buffer) >= SIT_PACKET_SIZE:
-                        packet = self._parse_telemetry_packet(buffer[:SIT_PACKET_SIZE], SIT_FLOAT_COUNT)
-                        if packet:
+                        parsed = self._parse_telemetry_packet(
+                            buffer[:SIT_PACKET_SIZE],
+                            SIT_FLOAT_COUNT,
+                            has_status=True,
+                            swap_pitch_roll=True
+                        )
+                        if parsed:
+                            packet, _ = parsed
                             consumed = SIT_PACKET_SIZE
                         else:
-                            packet = self._parse_telemetry_packet(buffer[:SIT_PACKET_SIZE_LEGACY], SIT_FLOAT_COUNT_LEGACY)
-                            if packet:
-                                consumed = SIT_PACKET_SIZE_LEGACY
+                            parsed = self._parse_telemetry_packet(
+                                buffer[:SIT_PACKET_SIZE_NO_STATUS],
+                                SIT_FLOAT_COUNT,
+                                has_status=False,
+                                swap_pitch_roll=True
+                            )
+                            if parsed:
+                                packet, _ = parsed
+                                consumed = SIT_PACKET_SIZE_NO_STATUS
                     else:
-                        if buffer[SIT_PACKET_SIZE_LEGACY - 2:SIT_PACKET_SIZE_LEGACY] != PACKET_FOOTER:
-                            break
-                        packet = self._parse_telemetry_packet(buffer[:SIT_PACKET_SIZE_LEGACY], SIT_FLOAT_COUNT_LEGACY)
-                        if packet:
-                            consumed = SIT_PACKET_SIZE_LEGACY
+                        if len(buffer) >= SIT_PACKET_SIZE_NO_STATUS:
+                            if buffer[SIT_PACKET_SIZE_NO_STATUS - 2:SIT_PACKET_SIZE_NO_STATUS] != PACKET_FOOTER:
+                                break
+                            parsed = self._parse_telemetry_packet(
+                                buffer[:SIT_PACKET_SIZE_NO_STATUS],
+                                SIT_FLOAT_COUNT,
+                                has_status=False,
+                                swap_pitch_roll=True
+                            )
+                            if parsed:
+                                packet, _ = parsed
+                                consumed = SIT_PACKET_SIZE_NO_STATUS
+
+                    if packet is None and len(buffer) >= SIT_PACKET_SIZE_LEGACY:
+                        if buffer[SIT_PACKET_SIZE_LEGACY - 2:SIT_PACKET_SIZE_LEGACY] == PACKET_FOOTER:
+                            parsed = self._parse_telemetry_packet(
+                                buffer[:SIT_PACKET_SIZE_LEGACY],
+                                SIT_FLOAT_COUNT_LEGACY,
+                                has_status=False,
+                                swap_pitch_roll=False
+                            )
+                            if parsed:
+                                packet, _ = parsed
+                                consumed = SIT_PACKET_SIZE_LEGACY
 
                     if packet:
                         if self._telemetry_callback:
@@ -267,76 +304,125 @@ class SerialHandler:
                             new_data = self._serial.read(in_waiting)
                         buffer.extend(new_data)
                 
-                # Look for status packets ending with 0D 0A
                 while len(buffer) >= 6:
-                    # Find 0D 0A footer
-                    footer_idx = -1
-                    for i in range(len(buffer) - 1):
-                        if buffer[i] == 0x0D and buffer[i+1] == 0x0A:
-                            footer_idx = i
+                    header = buffer[0]
+
+                    if header == PACKET_HEADER_TELEMETRY:
+                        if len(buffer) < SIT_PACKET_SIZE:
+                            if len(buffer) < SIT_PACKET_SIZE_NO_STATUS:
+                                break
+                            if buffer[SIT_PACKET_SIZE_NO_STATUS - 2:SIT_PACKET_SIZE_NO_STATUS] != PACKET_FOOTER:
+                                break
+
+                            parsed = self._parse_telemetry_packet(
+                                buffer[:SIT_PACKET_SIZE_NO_STATUS],
+                                SIT_FLOAT_COUNT,
+                                has_status=False,
+                                swap_pitch_roll=True
+                            )
+                            if parsed:
+                                packet, _ = parsed
+                                if self._telemetry_rx_callback:
+                                    self._telemetry_rx_callback(packet)
+                                buffer = buffer[SIT_PACKET_SIZE_NO_STATUS:]
+                                continue
+                            buffer = buffer[1:]
+                            continue
+
+                        parsed = self._parse_telemetry_packet(
+                            buffer[:SIT_PACKET_SIZE],
+                            SIT_FLOAT_COUNT,
+                            has_status=True,
+                            swap_pitch_roll=True
+                        )
+                        if parsed:
+                            packet, status_word = parsed
+                            if self._telemetry_rx_callback:
+                                self._telemetry_rx_callback(packet)
+                            if status_word is not None and self._status_callback:
+                                status_low = status_word & 0xFF
+                                status_high = (status_word >> 8) & 0xFF
+                                self._status_callback(StatusPacket.from_raw(status_low, status_high))
+                            buffer = buffer[SIT_PACKET_SIZE:]
+                        else:
+                            if len(buffer) >= SIT_PACKET_SIZE_NO_STATUS:
+                                parsed = self._parse_telemetry_packet(
+                                    buffer[:SIT_PACKET_SIZE_NO_STATUS],
+                                    SIT_FLOAT_COUNT,
+                                    has_status=False,
+                                    swap_pitch_roll=True
+                                )
+                                if parsed:
+                                    packet, _ = parsed
+                                    if self._telemetry_rx_callback:
+                                        self._telemetry_rx_callback(packet)
+                                    buffer = buffer[SIT_PACKET_SIZE_NO_STATUS:]
+                                else:
+                                    buffer = buffer[1:]
+                            else:
+                                buffer = buffer[1:]
+                    elif header == PACKET_HEADER_STATUS:
+                        if len(buffer) < 6:
                             break
-                    
-                    if footer_idx == -1:
-                        # No footer found, keep last bytes
-                        if len(buffer) > 50:
-                            buffer = buffer[-50:]
-                        break
-                    
-                    # Check if this could be a 6-byte status packet
-                    if footer_idx >= 4:
-                        potential_start = footer_idx - 4
-                        potential_packet = buffer[potential_start:footer_idx + 2]
-                        
-                        if len(potential_packet) == 6:
-                            header = potential_packet[0]
-                            status_low = potential_packet[1]
-                            status_high = potential_packet[2]
-                            checksum = potential_packet[3]
-                            
-                            # Check if it's a valid status packet (0xAA header)
-                            if header == 0xAA:
-                                calc_checksum = (header + status_low + status_high) % 256
-                                if calc_checksum == checksum:
-                                    packet = StatusPacket.from_raw(status_low, status_high)
-                                    if self._status_callback:
-                                        self._status_callback(packet)
-                    
-                    # Remove processed data
-                    buffer = buffer[footer_idx + 2:]
+
+                        packet = self._parse_status_packet(buffer[:6])
+                        if packet and self._status_callback:
+                            self._status_callback(packet)
+                            buffer = buffer[6:]
+                        else:
+                            buffer = buffer[1:]
+                    else:
+                        buffer = buffer[1:]
                 
                 time.sleep(0.01)
             except Exception as e:
                 self._report_error(f"SUT receiver error: {e}")
     
-    def _parse_telemetry_packet(self, data: bytes, float_count: int) -> Optional[TelemetryPacket]:
-        """Parse telemetry packet with float_count values"""
-        expected_size = 1 + (float_count * 4) + 1 + 2
+    def _parse_telemetry_packet(
+        self,
+        data: bytes,
+        float_count: int,
+        has_status: bool,
+        swap_pitch_roll: bool
+    ) -> Optional[Tuple[TelemetryPacket, Optional[int]]]:
+        """Parse telemetry packet and optional status bits"""
+        status_bytes = 2 if has_status else 0
+        expected_size = 1 + (float_count * 4) + status_bytes + 1 + 2
         if len(data) != expected_size:
             return None
 
         header = data[0]
         footer = data[expected_size - 2:expected_size]
-        
+
         if header != PACKET_HEADER_TELEMETRY or footer != PACKET_FOOTER:
             return None
-        
-        # Verify checksum
-        checksum_index = expected_size - 3
+
+        status_word = None
+        if has_status:
+            status_high = data[1 + (float_count * 4)]
+            status_low = data[1 + (float_count * 4) + 1]
+            status_word = (status_high << 8) | status_low
+            checksum_index = 1 + (float_count * 4) + 2
+        else:
+            checksum_index = 1 + (float_count * 4)
+
         calculated_checksum = sum(data[:checksum_index]) % 256
         received_checksum = data[checksum_index]
-        
+
         if calculated_checksum != received_checksum:
             return None
-        
-        # Extract float values
+
         values = []
         for i in range(float_count):
             start = 1 + (i * 4)
             float_bytes = data[start:start + 4]
             value = struct.unpack('>f', float_bytes)[0]
             values.append(value)
-        
-        return TelemetryPacket.from_raw_values(values, received_checksum)
+
+        if swap_pitch_roll and len(values) >= 7:
+            values[5], values[6] = values[6], values[5]
+
+        return TelemetryPacket.from_raw_values(values, received_checksum), status_word
     
     def _parse_status_packet(self, data: bytes) -> Optional[StatusPacket]:
         """Parse 6-byte status packet"""

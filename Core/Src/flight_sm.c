@@ -68,6 +68,19 @@ void flight_sm_init(void)
     s_q = xQueueCreate(1, sizeof(flight_snapshot_t));
 }
 
+void flight_sm_reset(void)
+{
+    s_phase          = FLIGHT_IDLE;
+    s_status         = 0u;
+    s_burnout_cnt    = 0;
+    s_apogee_cnt     = 0;
+    s_land_cnt       = 0;
+    s_armed          = 0;
+    s_drogue_deployed = 0;
+    s_main_deployed  = 0;
+    s_launch_tick    = 0;
+}
+
 void flight_sm_update(const alt_snapshot_t *alt, const imu_snapshot_t *imu)
 {
     switch (s_phase) {

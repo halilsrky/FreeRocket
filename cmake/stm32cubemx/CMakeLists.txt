@@ -38,6 +38,8 @@ set(MX_Application_Src
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/flight_sm.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/gnss_task.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/telemetry_task.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/sys_mode.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/cmd_task.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/dma.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/i2c.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/tim.c

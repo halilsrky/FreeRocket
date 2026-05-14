@@ -36,6 +36,9 @@ typedef struct {
 /* baro_task_create() içinden bir kez çağrılır */
 void flight_sm_init(void);
 
+/* Tüm state'i sıfırlar — STOP komutu veya mod geçişinde çağrılır */
+void flight_sm_reset(void);
+
 /*
  * Her 10 Hz baro döngüsünde, Kalman güncellemesinden hemen sonra çağrılır.
  * imu: IMU snapshot yoksa NULL geçilebilir; NULL ise launch ve tilt kontrolleri atlanır.

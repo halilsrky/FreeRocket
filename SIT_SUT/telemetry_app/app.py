@@ -40,6 +40,7 @@ class GroundStationApp:
     def _setup_serial_callbacks(self):
         """Setup serial handler callbacks"""
         self.serial_handler.set_telemetry_callback(self._on_telemetry_received)
+        self.serial_handler.set_telemetry_rx_callback(self._on_telemetry_rx_received)
         self.serial_handler.set_status_callback(self._on_status_received)
         self.serial_handler.set_error_callback(self._on_serial_error)
     
@@ -135,6 +136,11 @@ class GroundStationApp:
             self.root.after(0, lambda p=packet: self._update_sit_telemetry(p))
         elif self.sut_screen:
             self.root.after(0, lambda p=packet: self._update_sut_telemetry(p))
+
+    def _on_telemetry_rx_received(self, packet: TelemetryPacket):
+        """Handle incoming telemetry packets in SUT mode"""
+        if self.sut_screen:
+            self.root.after(0, lambda p=packet: self._update_sut_telemetry_rx(p))
     
     def _update_sit_telemetry(self, packet: TelemetryPacket):
         """Update SIT screen with telemetry (thread-safe)"""
@@ -149,6 +155,14 @@ class GroundStationApp:
         try:
             if self.sut_screen and self.sut_screen.winfo_exists():
                 self.sut_screen.update_telemetry(packet)
+        except tk.TclError:
+            pass
+
+    def _update_sut_telemetry_rx(self, packet: TelemetryPacket):
+        """Update SUT screen with incoming telemetry (thread-safe)"""
+        try:
+            if self.sut_screen and self.sut_screen.winfo_exists():
+                self.sut_screen.update_telemetry_rx(packet)
         except tk.TclError:
             pass
     

@@ -54,9 +54,12 @@ class SUTScreen(tk.Toplevel):
         self.on_close = on_close
         
         # Data storage
-        self.time_data = deque(maxlen=1000)
-        self.altitude_data = deque(maxlen=1000)
-        self.events: List[Tuple[float, int, float]] = []  # (time, bit_index, altitude)
+        self.tx_time_data = deque(maxlen=1000)
+        self.tx_altitude_data = deque(maxlen=1000)
+        self.rx_time_data = deque(maxlen=1000)
+        self.rx_altitude_data = deque(maxlen=1000)
+        self.events_tx: List[Tuple[float, int, float]] = []
+        self.events_rx: List[Tuple[float, int, float]] = []
         self.start_time = time.time()
         
         # Status tracking
@@ -67,6 +70,8 @@ class SUTScreen(tk.Toplevel):
         self.tx_count = 0
         self.rx_count = 0
         self.max_altitude = 0.0
+
+        self._has_rx_telemetry = False
         
         # Test state
         self._is_running = True
@@ -182,23 +187,35 @@ class SUTScreen(tk.Toplevel):
     
     def _create_plot(self, parent):
         """Create matplotlib plot with event markers"""
-        self.fig = Figure(figsize=(10, 5), dpi=100)
-        self.ax = self.fig.add_subplot(111)
-        self.ax.set_xlabel("Time (s)")
-        self.ax.set_ylabel("Altitude (m)")
-        self.ax.set_title("Flight Profile")
-        self.ax.grid(True, alpha=0.3)
-        
-        # Altitude line
-        self.line, = self.ax.plot([], [], 'b-', linewidth=1.5, label='Altitude')
-        
+        self.fig = Figure(figsize=(10, 7), dpi=100)
+        self.ax_tx = self.fig.add_subplot(211)
+        self.ax_rx = self.fig.add_subplot(212, sharex=self.ax_tx)
+
+        self.ax_tx.set_ylabel("Altitude (m)")
+        self.ax_tx.set_title("Flight Profile - Outgoing")
+        self.ax_tx.grid(True, alpha=0.3)
+
+        self.ax_rx.set_xlabel("Time (s)")
+        self.ax_rx.set_ylabel("Altitude (m)")
+        self.ax_rx.set_title("Flight Profile - Incoming")
+        self.ax_rx.grid(True, alpha=0.3)
+
+        # Altitude lines
+        self.tx_line, = self.ax_tx.plot([], [], 'b-', linewidth=1.5, label='TX Altitude')
+        self.rx_line, = self.ax_rx.plot([], [], 'g-', linewidth=1.5, label='RX Altitude')
+
         # Event scatter plots
-        self.event_scatters = {}
+        self.tx_event_scatters = {}
+        self.rx_event_scatters = {}
         for bit_idx in range(8):
-            scatter = self.ax.scatter([], [], c=self.EVENT_COLORS[bit_idx], s=60,
-                                      marker='o', label=self.EVENT_LABELS[bit_idx],
-                                      zorder=5, edgecolors='black', linewidth=0.5)
-            self.event_scatters[bit_idx] = scatter
+            tx_scatter = self.ax_tx.scatter([], [], c=self.EVENT_COLORS[bit_idx], s=60,
+                                            marker='o', label=self.EVENT_LABELS[bit_idx],
+                                            zorder=5, edgecolors='black', linewidth=0.5)
+            rx_scatter = self.ax_rx.scatter([], [], c=self.EVENT_COLORS[bit_idx], s=60,
+                                            marker='o', label=self.EVENT_LABELS[bit_idx],
+                                            zorder=5, edgecolors='black', linewidth=0.5)
+            self.tx_event_scatters[bit_idx] = tx_scatter
+            self.rx_event_scatters[bit_idx] = rx_scatter
         
         self.canvas = FigureCanvasTkAgg(self.fig, master=parent)
         self.canvas.draw()
@@ -218,27 +235,46 @@ class SUTScreen(tk.Toplevel):
     
     def _update_plot(self):
         """Update plot with new data"""
-        if MATPLOTLIB_AVAILABLE and hasattr(self, 'line'):
-            if self.time_data and self.altitude_data:
-                self.line.set_data(list(self.time_data), list(self.altitude_data))
-                
-                # Update event markers
-                events_by_bit = {i: {'times': [], 'alts': []} for i in range(8)}
-                for evt_time, bit_idx, evt_alt in self.events:
-                    events_by_bit[bit_idx]['times'].append(evt_time)
-                    events_by_bit[bit_idx]['alts'].append(evt_alt)
-                
-                for bit_idx, scatter in self.event_scatters.items():
-                    if events_by_bit[bit_idx]['times']:
-                        offsets = np.column_stack((events_by_bit[bit_idx]['times'],
-                                                   events_by_bit[bit_idx]['alts']))
-                        scatter.set_offsets(offsets)
-                    else:
-                        scatter.set_offsets(np.empty((0, 2)))
-                
-                self.ax.relim()
-                self.ax.autoscale_view()
-                self.canvas.draw_idle()
+        if MATPLOTLIB_AVAILABLE and hasattr(self, 'tx_line'):
+            if self.tx_time_data and self.tx_altitude_data:
+                self.tx_line.set_data(list(self.tx_time_data), list(self.tx_altitude_data))
+
+            if self.rx_time_data and self.rx_altitude_data:
+                self.rx_line.set_data(list(self.rx_time_data), list(self.rx_altitude_data))
+
+            events_tx_by_bit = {i: {'times': [], 'alts': []} for i in range(8)}
+            for evt_time, bit_idx, evt_alt in self.events_tx:
+                events_tx_by_bit[bit_idx]['times'].append(evt_time)
+                events_tx_by_bit[bit_idx]['alts'].append(evt_alt)
+
+            events_rx_by_bit = {i: {'times': [], 'alts': []} for i in range(8)}
+            for evt_time, bit_idx, evt_alt in self.events_rx:
+                events_rx_by_bit[bit_idx]['times'].append(evt_time)
+                events_rx_by_bit[bit_idx]['alts'].append(evt_alt)
+
+            for bit_idx in range(8):
+                tx_scatter = self.tx_event_scatters[bit_idx]
+                rx_scatter = self.rx_event_scatters[bit_idx]
+
+                if events_tx_by_bit[bit_idx]['times']:
+                    offsets = np.column_stack((events_tx_by_bit[bit_idx]['times'],
+                                               events_tx_by_bit[bit_idx]['alts']))
+                    tx_scatter.set_offsets(offsets)
+                else:
+                    tx_scatter.set_offsets(np.empty((0, 2)))
+
+                if events_rx_by_bit[bit_idx]['times']:
+                    offsets = np.column_stack((events_rx_by_bit[bit_idx]['times'],
+                                               events_rx_by_bit[bit_idx]['alts']))
+                    rx_scatter.set_offsets(offsets)
+                else:
+                    rx_scatter.set_offsets(np.empty((0, 2)))
+
+            self.ax_tx.relim()
+            self.ax_tx.autoscale_view()
+            self.ax_rx.relim()
+            self.ax_rx.autoscale_view()
+            self.canvas.draw_idle()
         
         # Update duration only if running
         if self._is_running:
@@ -259,8 +295,8 @@ class SUTScreen(tk.Toplevel):
             current_time = time.time() - self.start_time
             altitude = packet.altitude.altitude.value
             
-            self.time_data.append(current_time)
-            self.altitude_data.append(altitude)
+            self.tx_time_data.append(current_time)
+            self.tx_altitude_data.append(altitude)
             
             # Update statistics
             self.tx_count += 1
@@ -269,6 +305,23 @@ class SUTScreen(tk.Toplevel):
             if altitude > self.max_altitude:
                 self.max_altitude = altitude
                 self.max_alt_label.config(text=f"{self.max_altitude:.2f} m")
+        except Exception:
+            pass
+
+    def update_telemetry_rx(self, packet: TelemetryPacket):
+        """Update display with received telemetry"""
+        try:
+            self.telemetry_panel.update_incoming(packet)
+
+            current_time = time.time() - self.start_time
+            altitude = packet.altitude.altitude.value
+
+            self.rx_time_data.append(current_time)
+            self.rx_altitude_data.append(altitude)
+
+            self.rx_count += 1
+            self.rx_label.config(text=str(self.rx_count))
+            self._has_rx_telemetry = True
         except Exception:
             pass
     
@@ -284,18 +337,22 @@ class SUTScreen(tk.Toplevel):
             
             if new_flags:
                 current_time = time.time() - self.start_time
-                current_alt = self.altitude_data[-1] if self.altitude_data else 0.0
-                
+                current_alt_tx = self.tx_altitude_data[-1] if self.tx_altitude_data else 0.0
+                current_alt_rx = self.rx_altitude_data[-1] if self.rx_altitude_data else current_alt_tx
+
                 for bit_idx in range(8):
                     if new_flags & (1 << bit_idx):
-                        self.events.append((current_time, bit_idx, current_alt))
-                        self.add_log(f"[{current_time:.1f}s] {self.EVENT_LABELS[bit_idx]} at {current_alt:.1f}m")
+                        self.events_tx.append((current_time, bit_idx, current_alt_tx))
+                        self.events_rx.append((current_time, bit_idx, current_alt_rx))
+                        self.add_log(
+                            f"[{current_time:.1f}s] {self.EVENT_LABELS[bit_idx]} at {current_alt_rx:.1f}m"
+                        )
             
             self.previous_status = packet.status_word
             
-            # Update RX count
-            self.rx_count += 1
-            self.rx_label.config(text=str(self.rx_count))
+            if not self._has_rx_telemetry:
+                self.rx_count += 1
+                self.rx_label.config(text=str(self.rx_count))
         except Exception:
             pass
     
@@ -327,36 +384,54 @@ class SUTScreen(tk.Toplevel):
         
         # Create new figure with larger size
         fig = Figure(figsize=(16, 9), dpi=100)
-        ax = fig.add_subplot(111)
-        ax.set_xlabel("Time (s)", fontsize=12)
-        ax.set_ylabel("Altitude (m)", fontsize=12)
-        ax.set_title("Flight Profile - Detailed View", fontsize=14)
-        ax.grid(True, alpha=0.3)
-        
-        # Plot altitude line
-        if self.time_data and self.altitude_data:
-            ax.plot(list(self.time_data), list(self.altitude_data), 'b-', 
-                   linewidth=2, label='Altitude')
-        
-        # Plot events
-        for evt_time, bit_idx, evt_alt in self.events:
+        ax_tx = fig.add_subplot(211)
+        ax_rx = fig.add_subplot(212, sharex=ax_tx)
+
+        ax_tx.set_ylabel("Altitude (m)", fontsize=12)
+        ax_tx.set_title("Flight Profile - Outgoing (TX)", fontsize=14)
+        ax_tx.grid(True, alpha=0.3)
+
+        ax_rx.set_xlabel("Time (s)", fontsize=12)
+        ax_rx.set_ylabel("Altitude (m)", fontsize=12)
+        ax_rx.set_title("Flight Profile - Incoming (RX)", fontsize=14)
+        ax_rx.grid(True, alpha=0.3)
+
+        if self.tx_time_data and self.tx_altitude_data:
+            ax_tx.plot(list(self.tx_time_data), list(self.tx_altitude_data), 'b-',
+                       linewidth=2, label='TX Altitude')
+
+        if self.rx_time_data and self.rx_altitude_data:
+            ax_rx.plot(list(self.rx_time_data), list(self.rx_altitude_data), 'g-',
+                       linewidth=2, label='RX Altitude')
+
+        for evt_time, bit_idx, evt_alt in self.events_tx:
             color = self.EVENT_COLORS[bit_idx]
             label = self.EVENT_LABELS[bit_idx]
-            ax.scatter([evt_time], [evt_alt], c=color, s=100, marker='o',
-                      label=label, zorder=5, edgecolors='black', linewidth=1)
-            ax.annotate(label, (evt_time, evt_alt), textcoords="offset points",
-                       xytext=(5, 5), fontsize=9)
-        
-        # Add legend (remove duplicates)
-        handles, labels = ax.get_legend_handles_labels()
+            ax_tx.scatter([evt_time], [evt_alt], c=color, s=100, marker='o',
+                          label=label, zorder=5, edgecolors='black', linewidth=1)
+            ax_tx.annotate(label, (evt_time, evt_alt), textcoords="offset points",
+                           xytext=(5, 5), fontsize=9)
+
+        for evt_time, bit_idx, evt_alt in self.events_rx:
+            color = self.EVENT_COLORS[bit_idx]
+            label = self.EVENT_LABELS[bit_idx]
+            ax_rx.scatter([evt_time], [evt_alt], c=color, s=100, marker='o',
+                          label=label, zorder=5, edgecolors='black', linewidth=1)
+            ax_rx.annotate(label, (evt_time, evt_alt), textcoords="offset points",
+                           xytext=(5, 5), fontsize=9)
+
+        handles, labels = ax_tx.get_legend_handles_labels()
         by_label = dict(zip(labels, handles))
-        ax.legend(by_label.values(), by_label.keys(), loc='best')
-        
-        # Add max altitude annotation
+        ax_tx.legend(by_label.values(), by_label.keys(), loc='best')
+
+        handles, labels = ax_rx.get_legend_handles_labels()
+        by_label = dict(zip(labels, handles))
+        ax_rx.legend(by_label.values(), by_label.keys(), loc='best')
+
         if self.max_altitude > 0:
-            ax.axhline(y=self.max_altitude, color='red', linestyle='--', alpha=0.5)
-            ax.text(0.02, self.max_altitude, f'Max: {self.max_altitude:.2f}m', 
-                   transform=ax.get_yaxis_transform(), va='bottom', fontsize=10, color='red')
+            ax_tx.axhline(y=self.max_altitude, color='red', linestyle='--', alpha=0.5)
+            ax_tx.text(0.02, self.max_altitude, f'Max: {self.max_altitude:.2f}m',
+                       transform=ax_tx.get_yaxis_transform(), va='bottom', fontsize=10, color='red')
         
         fig.tight_layout()
         
@@ -391,9 +466,12 @@ class SUTScreen(tk.Toplevel):
     def get_flight_data(self) -> dict:
         """Get flight data for saving"""
         return {
-            'time_data': list(self.time_data),
-            'altitude_data': list(self.altitude_data),
-            'events': self.events,
+            'time_data': list(self.tx_time_data),
+            'altitude_data': list(self.tx_altitude_data),
+            'events': self.events_tx,
+            'rx_time_data': list(self.rx_time_data),
+            'rx_altitude_data': list(self.rx_altitude_data),
+            'rx_events': self.events_rx,
             'max_altitude': self.max_altitude,
             'tx_count': self.tx_count,
             'rx_count': self.rx_count,

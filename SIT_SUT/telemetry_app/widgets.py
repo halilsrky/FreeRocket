@@ -160,6 +160,32 @@ class TelemetryPanel(ttk.Frame):
         self.status_group.add_indicator("drogue", "Drogue")
         self.status_group.add_indicator("main_alt", "Main Alt")
         self.status_group.add_indicator("main", "Main Chute")
+
+        # Incoming telemetry groups (displayed under status LEDs)
+        self.incoming_frame = ttk.LabelFrame(self, text="Incoming Telemetry")
+        self.incoming_frame.grid(row=3, column=0, columnspan=2, sticky=tk.NSEW, padx=5, pady=5)
+        self.incoming_frame.columnconfigure(0, weight=1)
+        self.incoming_frame.columnconfigure(1, weight=1)
+
+        self.incoming_altitude_group = TelemetryGroupWidget(self.incoming_frame, "Altitude")
+        self.incoming_altitude_group.grid(row=0, column=0, sticky=tk.NSEW, padx=5, pady=5)
+        self.incoming_altitude_group.add_field("altitude", "Altitude", "m")
+
+        self.incoming_pressure_group = TelemetryGroupWidget(self.incoming_frame, "Pressure")
+        self.incoming_pressure_group.grid(row=0, column=1, sticky=tk.NSEW, padx=5, pady=5)
+        self.incoming_pressure_group.add_field("pressure", "Pressure", "hPa")
+
+        self.incoming_accel_group = TelemetryGroupWidget(self.incoming_frame, "Acceleration")
+        self.incoming_accel_group.grid(row=1, column=0, sticky=tk.NSEW, padx=5, pady=5)
+        self.incoming_accel_group.add_field("acc_x", "X-Axis", "g")
+        self.incoming_accel_group.add_field("acc_y", "Y-Axis", "g")
+        self.incoming_accel_group.add_field("acc_z", "Z-Axis", "g")
+
+        self.incoming_gyro_group = TelemetryGroupWidget(self.incoming_frame, "Gyroscope")
+        self.incoming_gyro_group.grid(row=1, column=1, sticky=tk.NSEW, padx=5, pady=5)
+        self.incoming_gyro_group.add_field("gyro_x", "X-Axis", "deg")
+        self.incoming_gyro_group.add_field("gyro_y", "Y-Axis", "deg")
+        self.incoming_gyro_group.add_field("gyro_z", "Z-Axis", "deg")
     
     def update_telemetry(self, packet: TelemetryPacket):
         """Update display from telemetry packet"""
@@ -182,6 +208,17 @@ class TelemetryPanel(ttk.Frame):
     def update_status(self, flags: StatusFlags):
         """Update status indicators"""
         self.status_group.update_from_flags(flags)
+
+    def update_incoming(self, packet: TelemetryPacket):
+        """Update display with incoming telemetry values"""
+        self.incoming_altitude_group.update_from_telemetry(packet.altitude.altitude, "altitude")
+        self.incoming_pressure_group.update_from_telemetry(packet.pressure.pressure, "pressure")
+        self.incoming_accel_group.update_from_telemetry(packet.acceleration.acc_x, "acc_x")
+        self.incoming_accel_group.update_from_telemetry(packet.acceleration.acc_y, "acc_y")
+        self.incoming_accel_group.update_from_telemetry(packet.acceleration.acc_z, "acc_z")
+        self.incoming_gyro_group.update_from_telemetry(packet.gyroscope.gyro_x, "gyro_x")
+        self.incoming_gyro_group.update_from_telemetry(packet.gyroscope.gyro_y, "gyro_y")
+        self.incoming_gyro_group.update_from_telemetry(packet.gyroscope.gyro_z, "gyro_z")
     
     def clear_all(self):
         """Clear all displays"""
@@ -190,3 +227,7 @@ class TelemetryPanel(ttk.Frame):
         self.accel_group.clear_all()
         self.gyro_group.clear_all()
         self.status_group.clear_all()
+        self.incoming_altitude_group.clear_all()
+        self.incoming_pressure_group.clear_all()
+        self.incoming_accel_group.clear_all()
+        self.incoming_gyro_group.clear_all()

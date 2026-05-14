@@ -4,6 +4,7 @@
 #include "alt_kalman.h"
 #include "imu_snapshot.h"
 #include "flight_sm.h"
+#include "sys_mode.h"
 #include "bme280.h"
 #include "i2c.h"
 #include "FreeRTOS.h"
@@ -77,9 +78,11 @@ static void baro_task(void *arg)
     alt_kalman_t kf;
     alt_kalman_init(&kf);
 
-    float    alt_ref  = 0.0f;
-    bool     ref_set  = false;
+    float    alt_ref   = 0.0f;
+    bool     ref_set   = false;
     uint32_t last_tick = 0U;
+
+    SystemMode_t prev_mode = MODE_NORMAL;
 
     uint8_t    raw[8];
     TickType_t wake_tick = xTaskGetTickCount();
@@ -87,6 +90,65 @@ static void baro_task(void *arg)
     for (;;) {
         vTaskDelayUntil(&wake_tick, pdMS_TO_TICKS(100));  /* 10 Hz */
 
+        SystemMode_t mode = sys_mode_get();
+
+        /* Mod geçişinde tüm state'i sıfırla */
+        if (mode != prev_mode) {
+            ref_set   = false;
+            alt_kalman_init(&kf);
+            flight_sm_reset();
+            prev_mode = mode;
+        }
+
+        /* ── SUT: sentetik veri yolu ──────────────────────────────────── */
+        if (mode == MODE_SUT) {
+            sut_data_t sut;
+            if (!sys_mode_sut_peek(&sut)) continue;  /* henüz PC'den veri gelmedi */
+
+            uint32_t now = HAL_GetTick();
+
+            baro_snapshot_t baro_snap = {
+                .ts_ms    = now,
+                .pressure = sut.pressure,
+                .altitude = sut.altitude,
+            };
+            xQueueOverwrite(s_baro_q, &baro_snap);
+
+            if (!ref_set) {
+                alt_ref   = sut.altitude;
+                ref_set   = true;
+                last_tick = now;
+                continue;
+            }
+
+            float dt    = (float)(now - last_tick) * 0.001f;
+            last_tick   = now;
+
+            float alt_rel      = sut.altitude - alt_ref;
+            float avert        = sut.accel_z - 9.81f;  /* Z yukarı, yerçekimi çıkarıldı */
+            float filtered_alt = alt_kalman_update(&kf, alt_rel, avert, dt);
+
+            alt_snapshot_t alt_snap = {
+                .ts_ms        = now,
+                .altitude_rel = filtered_alt,
+                .velocity     = alt_kalman_velocity(&kf),
+                .accel_vert   = alt_kalman_accel(&kf),
+            };
+            xQueueOverwrite(s_alt_q, &alt_snap);
+
+            /* Sentetik IMU: launch tespiti için SUT ivme değerleri,
+             * quaternion identity (yaw/tilt = 0) */
+            imu_snapshot_t sut_imu = {0};
+            sut_imu.accel.x = sut.accel_x;
+            sut_imu.accel.y = sut.accel_y;
+            sut_imu.accel.z = sut.accel_z;
+            sut_imu.q.w     = 1.0f;
+
+            flight_sm_update(&alt_snap, &sut_imu);
+            continue;
+        }
+
+        /* ── NORMAL / SIT: gerçek sensör yolu ────────────────────────── */
         if (bme280_read(&hi2c3, raw) != HAL_OK) continue;
 
         bme280_data_t data;
@@ -94,7 +156,6 @@ static void baro_task(void *arg)
 
         uint32_t now = HAL_GetTick();
 
-        /* Ham baro snapshot her zaman yayınlanır */
         baro_snapshot_t baro_snap = {
             .ts_ms       = now,
             .temperature = data.temperature,
@@ -104,7 +165,6 @@ static void baro_task(void *arg)
         };
         xQueueOverwrite(s_baro_q, &baro_snap);
 
-        /* İlk ölçümde referans irtifayı kaydet ve Kalman başlat */
         if (!ref_set) {
             alt_ref   = data.altitude;
             ref_set   = true;
@@ -115,13 +175,12 @@ static void baro_task(void *arg)
         float dt = (float)(now - last_tick) * 0.001f;
         last_tick = now;
 
-        /* IMU snapshot — hem accel_vertical hem flight_sm için kullanılır */
         imu_snapshot_t        imu_snap;
         const imu_snapshot_t *imu_ptr = imu_snapshot_peek(&imu_snap) ? &imu_snap : NULL;
 
         float avert = imu_ptr ? accel_vertical(imu_ptr) : 0.0f;
 
-        float alt_rel = data.altitude - alt_ref;
+        float alt_rel      = data.altitude - alt_ref;
         float filtered_alt = alt_kalman_update(&kf, alt_rel, avert, dt);
 
         alt_snapshot_t alt_snap = {
