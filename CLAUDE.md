@@ -21,6 +21,15 @@ FreeRtos_project/       ← aktif proje (STM32CubeIDE .ioc + HAL + FreeRTOS)
 
 **`Report.md`** — bitirme raporu için ham teknik notlar deposu. Sadece rapor değeri olan olaylar yazılır: kök neden, teşhis, çözüm, tekrar etmemesi için alınan önlem. Sıradan refactor notları buraya girmez.
 
+## Git branch yapısı
+
+| Branch | İçerik |
+| ------ | ------- |
+| `master` | Tam uçuş bilgisayarı — `flight_sm.c` ile klasik faz tespiti |
+| `ai` | **Aktif geliştirme** — SUT testinde `flight_sm` yerine ML faz dedektörü |
+
+`ai` branch'inde SUT pipeline tamamen değişti: Mahony + Kalman + flight_sm kaldırıldı, yerini `phase_ml` modülü aldı. Normal uçuş akışı (imu_task, baro_task, flight_sm) dokunulmadan kaldı.
+
 ## Aktif proje — mevcut dosya yapısı
 
 ### CubeMX üretilen (dokunma)
@@ -52,7 +61,12 @@ FreeRtos_project/       ← aktif proje (STM32CubeIDE .ioc + HAL + FreeRTOS)
 | `Core/Src/gnss_task.c` / `Inc/gnss_task.h` | GNSS task: baud switch + circular DMA RX + NMEA parse + snapshot | ✅ Tamamlandı |
 | `Core/Inc/gnss_snapshot.h` | `gnss_snapshot_t` struct + `gnss_snapshot_peek()` | ✅ Tamamlandı |
 | `Core/Src/flight_sm.c` / `Inc/flight_sm.h` | Flight state machine: 7 faz, baro_task'tan 10 Hz tetikleme | ✅ Tamamlandı |
+| `Core/Src/phase_ml.c` / `Inc/phase_ml.h` | **[ai branch]** ML faz dedektörü: 200-sample ring buffer + feature extraction + ST Edge AI çıkarım | ✅ Tamamlandı |
+| `Core/Src/sut_task.c` / `Inc/sut_task.h` | SUT test pipeline — **ai branch'inde** phase_ml kullanır, master'da flight_sm | ✅ Tamamlandı |
+| `Core/Src/cmd_task.c` / `Inc/cmd_task.h` | PC komut ayrıştırma, mod yönetimi | ✅ Tamamlandı |
 | `Middlewares/SEGGER/` | SEGGER RTT + SystemView middleware | ✅ Post-Mortem modu aktif |
+| `Middlewares/phase_detector.tflite-NUCLEO-F446RE-code/` | **[ai branch]** ST Edge AI v4 üretilen kod: `network.c`, `network_data.c`, `Inc/`, `Lib/*.a` | ✅ Tamamlandı |
+| `mlmodel.md` | **[ai branch]** ML model dokümantasyonu: giriş özellikleri, normalizasyon sabitleri, API kullanımı | ✅ Tamamlandı |
 
 ### Henüz kapsam dışı
 
@@ -87,6 +101,8 @@ FreeRtos_project/       ← aktif proje (STM32CubeIDE .ioc + HAL + FreeRTOS)
 | Baro | `osPriorityBelowNormal` | 512 × 4 B | 10 Hz I2C3 DMA baro okuma + Kalman güncelleme + snapshot |
 | GNSS | `osPriorityBelowNormal` | 512 × 4 B | USART6 circular DMA RX + NMEA parse + snapshot (1 Hz) |
 | Telemetry | `osPriorityBelowNormal` | 256 × 4 B | 50 Hz UART2 DMA TX |
+| SUT | `osPriorityNormal` | 512 × 4 B | SUT test pipeline — paket al, phase_ml çalıştır, response gönder |
+| CMD | `osPriorityNormal` | 256 × 4 B | PC komutlarını ayrıştır, mod geçişlerini yönet |
 
 ## Donanım haritası
 
@@ -142,7 +158,69 @@ JTAG/canlı bağlantı olmadan çalışır. Sistem çalışırken olaylar RAM'de
 7. ✅ Altitude Kalman filtresi (baro + IMU füzyonu, 10 Hz, baro_task içinde).
 8. ✅ GNSS task (USART6 circular DMA, NMEA parse, snapshot).
 9. ✅ Flight state machine (`flight_sm.c`, 7 faz, baro_task 10 Hz tetiklemeli).
-10. SIT SUT testleri.
+10. ✅ SIT/SUT test altyapısı (cmd_task + sut_task, MODE_SUT).
+11. ✅ **[ai branch]** ML faz dedektörü: `phase_ml.c` — ST Edge AI v4, int8 TFLite, 5 sınıf, 200-sample pencere.
+12. ✅ **[ai branch]** SUT pipeline'ı ML modele bağlandı; raw veri → çıkarım → FSM bit flag map → PC response.
+
+## AI branch — phase_ml mimarisi
+
+### Çalışma prensibi
+
+```
+SUT paketi (PC → STM32)
+  └─► phase_ml_push()   × count  (IMU örnekleri, raw — filtresiz)
+  └─► phase_ml_push_baro()       (ham baro yüksekliği)
+       │
+       ▼ her 100 örnekte bir (500 ms @ 200 Hz)
+  extract_features()   → 14 float özellik
+  normalize()          → Z-score (FEATURE_MEAN / FEATURE_SCALE)
+  quantize()           → int8[14]   (scale=0.1929, zp=−8)
+  stai_network_run()   → int8[5]    argmax → phase (0-4)
+       │
+       ▼
+  PHASE_TO_STATUS[phase]  → uint16_t bit flags (PC formatı)
+  send_response(baro_t, raw_alt, 0, 0, 0, status)
+```
+
+### PHASE_TO_STATUS eşleşmesi
+
+PC, `status` alanını `flight_sm.c`'nin ürettiği kümülatif `FSM_BIT_*` flag olarak okur.
+ML modeli 0–4 tamsayı çıkardığından, ham değer doğrudan gönderilemez.
+
+| ML Faz | Değer | Aktif FSM bitleri |
+|--------|-------|-------------------|
+| 0 PAD | `0x0000` | — |
+| 1 BOOST | `0x0001` | LAUNCHED |
+| 2 COAST | `0x0007` | LAUNCHED \| BURNOUT \| ARMED |
+| 3 APOGEE | `0x0217` | + APOGEE \| VEL\_APOGEE |
+| 4 DESCENT | `0x0237` | + DROGUE |
+
+### ML model teknik özeti
+
+| Parametre | Değer |
+|-----------|-------|
+| Mimari | Dense: 14 → 64 → 32 → 5 |
+| Format | int8 TFLite (ST Edge AI v4) |
+| Flash | 11.8 KB |
+| RAM (aktivasyon) | 748 B |
+| MACC | 3280 (~0.1 ms @ 180 MHz) |
+| Test doğruluğu | %99.47 |
+| Pencere | 200 IMU + 10 baro, her 100 örnekte çıkarım |
+
+### CMake linkleme (ai branch)
+
+```cmake
+# cmake/stm32cubemx/CMakeLists.txt
+MX_Include_Dirs  += Middlewares/phase_detector.tflite-NUCLEO-F446RE-code/Inc
+                 += Middlewares/phase_detector.tflite-NUCLEO-F446RE-code
+MX_Application_Src += Core/Src/phase_ml.c
+                   += Middlewares/.../network.c
+                   += Middlewares/.../network_data.c
+MX_LINK_DIRS     += Middlewares/.../Lib
+MX_LINK_LIBS     += :NetworkRuntime1200_CM4_GCC.a  m
+```
+
+Detaylı model bilgisi → `mlmodel.md`
 
 ## Şu anki kritik hatalar (old_project'ten gelen, yeni projede tekrar edilmeyecek)
 
