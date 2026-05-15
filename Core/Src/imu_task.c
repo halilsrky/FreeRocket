@@ -1,4 +1,5 @@
 #include "imu_task.h"
+#include "sys_mode.h"
 #include "bmi088_defs.h"
 #include "imu_snapshot.h"
 #include "bmi088.h"
@@ -16,6 +17,7 @@
 #define NOTIFY_GYRO_DRDY   (1U << 1)
 #define NOTIFY_DMA_DONE    (1U << 2)
 #define NOTIFY_I2C_ERROR   (1U << 3)
+#define NOTIFY_SUT_BATCH   (1U << 4)
 
 /* ── Sensor config ── */
 static const bmi088_config_t k_bmi_cfg = {
@@ -90,12 +92,75 @@ static void imu_task(void *arg)
 
     float    ax = 0.0f, ay = 0.0f, az = 0.0f;
     float    gx = 0.0f, gy = 0.0f, gz = 0.0f;
-    uint32_t last_tick = 0U;
+    uint32_t last_tick  = 0U;
+    SystemMode_t prev_mode = MODE_NORMAL;
 
     for (;;) {
         uint32_t bits = 0;
         xTaskNotifyWait(0U, UINT32_MAX, &bits, pdMS_TO_TICKS(500));
 
+        SystemMode_t mode = sys_mode_get();
+
+        /* Mod değişiminde Mahony ve zamanlayıcıyı sıfırla */
+        if (mode != prev_mode) {
+            mahony_init(&mahony);
+            last_tick  = 0U;
+            acc_fresh  = false;
+            gyro_fresh = false;
+            dma_state  = DMA_IDLE;
+            prev_mode  = mode;
+        }
+
+        /* ── SUT modu: 100 ms batch IMU yolu ────────────────────────
+         * Her batch N örnek içerir; her örneğin sim_time'ına göre
+         * doğru dt hesaplanır ve Mahony sırayla güncellenir.
+         */
+        if (mode == MODE_SUT) {
+            if (bits & NOTIFY_SUT_BATCH) {
+                sut_imu_batch_t batch;
+                if (sys_mode_sut_imu_batch_receive(&batch, 0U)) {
+                    float prev_sim = -1.0f;
+                    for (uint8_t i = 0u; i < batch.count; i++) {
+                        float dt = (prev_sim < 0.0f)
+                                   ? 0.005f
+                                   : (batch.samples[i].sim_time - prev_sim);
+                        if (dt <= 0.0f || dt > 0.2f) dt = 0.005f;
+                        prev_sim = batch.samples[i].sim_time;
+
+                        mahony_update(&mahony,
+                                      batch.samples[i].gyro_x,
+                                      batch.samples[i].gyro_y,
+                                      batch.samples[i].gyro_z,
+                                      0.0f, 0.0f, 0.0f,
+                                      dt);
+                    }
+
+                    uint32_t now = HAL_GetTick();
+                    const sut_imu_sample_t *last =
+                        &batch.samples[batch.count > 0u ? batch.count - 1u : 0u];
+
+                    imu_snapshot_t snap;
+                    snap.ts_ms   = now;
+                    snap.accel.x = 0.0f;
+                    snap.accel.y = 0.0f;
+                    snap.accel.z = 0.0f;
+                    snap.gyro.x  = last->gyro_x;
+                    snap.gyro.y  = last->gyro_y;
+                    snap.gyro.z  = last->gyro_z;
+                    snap.q.w = mahony.q[0]; snap.q.x = mahony.q[1];
+                    snap.q.y = mahony.q[2]; snap.q.z = mahony.q[3];
+                    mahony_get_euler(&mahony,
+                                     &snap.euler.roll,
+                                     &snap.euler.pitch,
+                                     &snap.euler.yaw);
+
+                    xQueueOverwrite(s_snapshot_q, &snap);
+                }
+            }
+            continue;  /* DRDY bitlerini SUT modunda yoksay */
+        }
+
+        /* ── NORMAL / SIT modu: gerçek sensör yolu ───────────────── */
         if (bits & NOTIFY_ACC_DRDY)  acc_pending  = true;
         if (bits & NOTIFY_GYRO_DRDY) gyro_pending = true;
 
@@ -138,7 +203,6 @@ static void imu_task(void *arg)
 
             mahony_update(&mahony, gx, gy, gz, ax, ay, az, dt);
 
-            /* Snapshot: tüm alanlar tutarlı — tek xQueueOverwrite atomik */
             imu_snapshot_t snap;
             snap.ts_ms    = now;
             snap.accel.x  = ax;  snap.accel.y = ay;  snap.accel.z = az;
@@ -155,6 +219,15 @@ static void imu_task(void *arg)
             acc_fresh  = false;
             gyro_fresh = false;
         }
+    }
+}
+
+/* ── SUT batch teslimi (cmd_task → imu_task) ── */
+void imu_task_notify_sut_batch(const sut_imu_batch_t *batch)
+{
+    sys_mode_sut_imu_batch_put(batch);
+    if (s_handle != NULL) {
+        xTaskNotify(s_handle, NOTIFY_SUT_BATCH, eSetBits);
     }
 }
 

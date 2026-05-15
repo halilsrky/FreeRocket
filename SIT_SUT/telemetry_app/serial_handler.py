@@ -14,20 +14,27 @@ from models import TelemetryPacket, StatusPacket, ConnectionConfig
 
 
 # Protocol Constants
-PACKET_HEADER_TELEMETRY = 0xAB
-PACKET_HEADER_STATUS = 0xAA
+PACKET_HEADER_TELEMETRY = 0xAB   # SIT/NORMAL telemetri çıkışı (STM32 → PC)
+PACKET_HEADER_STATUS    = 0xAA   # Durum paketi  (STM32 → PC) / CMD  (PC → STM32)
 PACKET_FOOTER = bytes([0x0D, 0x0A])
 
-SIT_FLOAT_COUNT = 12
+# STM32'den gelen telemetri paketi (54 byte, SIT modu)
+SIT_FLOAT_COUNT        = 12
 SIT_FLOAT_COUNT_LEGACY = 8
-SIT_STATUS_BYTES = 2
-SIT_PACKET_SIZE = 1 + (SIT_FLOAT_COUNT * 4) + SIT_STATUS_BYTES + 1 + 2
+SIT_STATUS_BYTES       = 2
+SIT_PACKET_SIZE          = 1 + (SIT_FLOAT_COUNT * 4) + SIT_STATUS_BYTES + 1 + 2
 SIT_PACKET_SIZE_NO_STATUS = 1 + (SIT_FLOAT_COUNT * 4) + 1 + 2
-SIT_PACKET_SIZE_LEGACY = 1 + (SIT_FLOAT_COUNT_LEGACY * 4) + 1 + 2
+SIT_PACKET_SIZE_LEGACY    = 1 + (SIT_FLOAT_COUNT_LEGACY * 4) + 1 + 2
 
-# Command Packets
-SIT_CMD = bytearray([0xAA, 0x20, 0xCA, 0x0D, 0x0A])
-SUT_CMD = bytearray([0xAA, 0x22, 0xCC, 0x0D, 0x0A])
+# SUT gönderim paketi (PC → STM32) — combined, her 100 ms simülasyon zamanı
+#   SUT_COMBINED: 0xAD | count(1) | count×[sim_t(4)+gx(4)+gy(4)+gz(4)] | alt(4)+press(4)+baro_t(4) | chk | CR LF
+SUT_COMBINED_HEADER  = 0xAD
+SUT_IMU_SAMPLE_SIZE  = 16   # sim_time(4) + gyro_x(4) + gyro_y(4) + gyro_z(4)
+SUT_WINDOW_S         = 0.1  # 100 ms simülasyon penceresi
+
+# Komut paketleri (PC → STM32)
+SIT_CMD  = bytearray([0xAA, 0x20, 0xCA, 0x0D, 0x0A])
+SUT_CMD  = bytearray([0xAA, 0x22, 0xCC, 0x0D, 0x0A])
 STOP_CMD = bytearray([0xAA, 0x24, 0xCE, 0x0D, 0x0A])
 
 
@@ -117,7 +124,7 @@ class SerialHandler:
         self._receiver_thread = threading.Thread(target=self._sit_receiver_loop, daemon=True)
         self._receiver_thread.start()
     
-    def start_sut_mode(self, csv_data: Optional[List[List[float]]] = None):
+    def start_sut_mode(self, csv_data: Optional[List[dict]] = None):
         """Start SUT mode - send telemetry, receive status"""
         if not self._connected:
             self._report_error("Not connected")
@@ -126,7 +133,6 @@ class SerialHandler:
         self._mode = "SUT"
         self._running = True
         self._csv_data = csv_data
-        self._csv_index = 0
         
         # Aggressive reset sequence (like disconnect/reconnect does)
         if self._serial:
@@ -267,28 +273,69 @@ class SerialHandler:
                 self._report_error(f"SIT receiver error: {e}")
     
     def _sut_sender_loop(self):
-        """Sender loop for SUT mode - telemetry packets at 10Hz"""
-        while self._running and self._mode == "SUT":
-            try:
-                packet = self._create_sut_packet()
-                if packet is None:
-                    # CSV ended or error
-                    break
-                    
-                if self._serial and self._serial.is_open:
-                    with self._lock:
-                        self._serial.write(packet)
-                    
-                    # Parse for callback - create telemetry packet for GUI
-                    values = self._extract_values_from_packet(packet)
-                    if values and self._telemetry_callback:
-                        telemetry = TelemetryPacket.from_raw_values(values)
-                        self._telemetry_callback(telemetry)
-                
-                time.sleep(0.1)  # 10Hz
-            except Exception as e:
-                self._report_error(f"SUT sender error: {e}")
+        """
+        100 ms'lik simülasyon pencerelerinde combined paket gönderir.
+          • Bir pencere: N adet IMU örneği (sim_time + gyro) + son baro verisi
+          • Paket tipi: SUT_COMBINED (0xAD), değişken uzunluk
+          • Zamanlama: sleep(98 ms) + 2 ms busy-wait → düşük CPU, ~1 ms hassasiyet
+          • Her 100 ms'de 1 write() çağrısı — eski 5 ms'de 1 yerine 20× daha az syscall
+        """
+        if not self._csv_data:
+            self._report_error("SUT sender: CSV verisi yok")
+            return
+
+        try:
+            import ctypes
+            ctypes.windll.winmm.timeBeginPeriod(1)
+        except Exception:
+            pass
+
+        start_real  = time.perf_counter()
+        next_window = SUT_WINDOW_S
+        imu_buffer: list = []
+
+        for row in self._csv_data:
+            if not self._running or self._mode != "SUT":
                 break
+
+            sim_time = row.get('time', 0.0)
+            imu_buffer.append(row)
+
+            if sim_time >= next_window - 1e-6:
+                # Pencere doldu — hedef gerçek zamana kadar bekle
+                target    = start_real + next_window
+                remaining = target - time.perf_counter()
+                if remaining > 0.002:
+                    time.sleep(remaining - 0.001)  # uyku: gereksiz CPU kullanımı önle
+                while time.perf_counter() < target:  # son 1-2 ms busy-wait
+                    if not self._running:
+                        break
+
+                if not self._running or self._mode != "SUT":
+                    break
+
+                pkt = self._create_combined_packet(imu_buffer, imu_buffer[-1])
+                if self._serial and self._serial.is_open:
+                    self._serial.write(pkt)  # tek write() çağrısı — lock gereksiz (sole writer)
+
+                # GUI: sadece pencere başına bir güncelleme
+                if self._telemetry_callback:
+                    baro_row = imu_buffer[-1]
+                    try:
+                        telemetry = TelemetryPacket.from_raw_values([
+                            baro_row.get('altitude', 0.0), 0.0,
+                            baro_row.get('accel_x', 0.0),
+                            baro_row.get('accel_y', 0.0),
+                            baro_row.get('accel_z', 0.0),
+                            0.0, 0.0, 0.0])
+                        self._telemetry_callback(telemetry)
+                    except Exception:
+                        pass
+
+                imu_buffer  = []
+                next_window += SUT_WINDOW_S
+
+        self._running = False
     
     def _sut_receiver_loop(self):
         """Receiver loop for SUT mode - status packets"""
@@ -443,59 +490,30 @@ class SerialHandler:
         
         return StatusPacket.from_raw(status_low, status_high)
     
-    def _create_sut_packet(self) -> Optional[bytes]:
-        """Create 36-byte SUT telemetry packet"""
-        if self._csv_data:
-            if self._csv_index >= len(self._csv_data):
-                self._running = False
-                return None
-            
-            values = self._csv_data[self._csv_index]
-            self._csv_index += 1
-        else:
-            # Random test data
-            import random
-            values = [
-                random.uniform(0.0, 1000.0),
-                random.uniform(900.0, 1100.0),
-                random.uniform(-2.0, 2.0),
-                random.uniform(-2.0, 2.0),
-                random.uniform(-2.0, 2.0),
-                random.uniform(-250.0, 250.0),
-                random.uniform(-250.0, 250.0),
-                random.uniform(-250.0, 250.0)
-            ]
-        
-        # Ensure 8 values
-        while len(values) < 8:
-            values.append(0.0)
-        
-        packet = bytearray(36)
-        packet[0] = PACKET_HEADER_TELEMETRY
-        
-        for i, value in enumerate(values[:8]):
-            float_bytes = struct.pack('>f', float(value))
-            start = 1 + (i * 4)
-            packet[start:start + 4] = float_bytes
-        
-        packet[34] = 0x0D
-        packet[35] = 0x0A
-        
-        checksum = sum(packet[:33]) % 256
-        packet[33] = checksum
-        
+    def _create_combined_packet(self, imu_rows: list, baro_row: dict) -> bytes:
+        """
+        SUT_COMBINED paketi (değişken uzunluk):
+          0xAD | count(1) | count×[sim_time(4)+gx(4)+gy(4)+gz(4)] | alt(4)+press(4)+baro_t(4) | chk | 0x0D 0x0A
+        chk = sum(byte[0..size-4]) % 256
+        N ≤ 25  →  max ~417 byte
+        """
+        count    = len(imu_rows)
+        pkt_size = 2 + count * SUT_IMU_SAMPLE_SIZE + 12 + 1 + 2
+        packet   = bytearray(pkt_size)
+        packet[0] = SUT_COMBINED_HEADER
+        packet[1] = count & 0xFF
+        for i, row in enumerate(imu_rows):
+            off = 2 + i * SUT_IMU_SAMPLE_SIZE
+            struct.pack_into('>f', packet, off,      float(row.get('time',   0.0)))
+            struct.pack_into('>f', packet, off + 4,  float(row.get('gyro_x', 0.0)))
+            struct.pack_into('>f', packet, off + 8,  float(row.get('gyro_y', 0.0)))
+            struct.pack_into('>f', packet, off + 12, float(row.get('gyro_z', 0.0)))
+        baro_off = 2 + count * SUT_IMU_SAMPLE_SIZE
+        struct.pack_into('>f', packet, baro_off,     float(baro_row.get('altitude', 0.0)))
+        struct.pack_into('>f', packet, baro_off + 4, float(baro_row.get('pressure', 0.0)))
+        struct.pack_into('>f', packet, baro_off + 8, float(baro_row.get('time',     0.0)))
+        chk_idx       = baro_off + 12
+        packet[chk_idx]     = sum(packet[:chk_idx]) % 256
+        packet[chk_idx + 1] = 0x0D
+        packet[chk_idx + 2] = 0x0A
         return bytes(packet)
-    
-    def _extract_values_from_packet(self, packet: bytes) -> Optional[List[float]]:
-        """Extract float values from packet"""
-        if len(packet) != 36:
-            return None
-        
-        values = []
-        for i in range(8):
-            start = 1 + (i * 4)
-            float_bytes = packet[start:start + 4]
-            value = struct.unpack('>f', float_bytes)[0]
-            values.append(value)
-        
-        return values

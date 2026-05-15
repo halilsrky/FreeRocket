@@ -91,15 +91,12 @@ static void telem_task(void *arg)
         alt_snapshot_t    alt    = {0};
         gnss_snapshot_t   gnss   = {0};
         flight_snapshot_t flight = {0};
-        sut_data_t        sut    = {0};
 
-        bool have_imu    = imu_snapshot_peek(&imu);
-        bool have_baro   = baro_snapshot_peek(&baro);
-        bool have_alt    = alt_snapshot_peek(&alt);
-        bool have_gnss   = gnss_snapshot_peek(&gnss) && gnss.is_valid;
+        bool have_imu  = imu_snapshot_peek(&imu);
+        bool have_baro = baro_snapshot_peek(&baro);
+        bool have_alt  = alt_snapshot_peek(&alt);
+        bool have_gnss = gnss_snapshot_peek(&gnss) && gnss.is_valid;
         flight_snapshot_peek(&flight);  /* yoksa status=0 kalır */
-
-        bool is_sut = (sys_mode_get() == MODE_SUT) && sys_mode_sut_peek(&sut);
 
         if (!have_baro || !have_alt) continue;
 
@@ -108,12 +105,12 @@ static void telem_task(void *arg)
         /* [1-32] big-endian floats */
         put_float_be(&s_frame[1],  alt.altitude_rel);
         put_float_be(&s_frame[5],  baro.pressure);
-        put_float_be(&s_frame[9],  is_sut ?  sut.accel_x : (have_imu ?  imu.accel.x     : 0.0f));
-        put_float_be(&s_frame[13], is_sut ?  sut.accel_y : (have_imu ?  imu.accel.y     : 0.0f));
-        put_float_be(&s_frame[17], is_sut ? -sut.accel_z : (have_imu ? -imu.accel.z     : 0.0f));
-        put_float_be(&s_frame[21], is_sut ?  0.0f        : (have_imu ?  imu.euler.pitch : 0.0f));
-        put_float_be(&s_frame[25], is_sut ?  0.0f        : (have_imu ?  imu.euler.roll  : 0.0f));
-        put_float_be(&s_frame[29], is_sut ?  0.0f        : (have_imu ?  imu.euler.yaw   : 0.0f));
+        put_float_be(&s_frame[9],  have_imu ?  imu.accel.x     : 0.0f);
+        put_float_be(&s_frame[13], have_imu ?  imu.accel.y     : 0.0f);
+        put_float_be(&s_frame[17], have_imu ? -imu.accel.z     : 0.0f);
+        put_float_be(&s_frame[21], have_imu ?  imu.euler.pitch : 0.0f);
+        put_float_be(&s_frame[25], have_imu ?  imu.euler.roll  : 0.0f);
+        put_float_be(&s_frame[29], have_imu ?  imu.euler.yaw   : 0.0f);
 
         /* [33-48] big-endian floats */
         put_float_be(&s_frame[33], have_gnss ? gnss.altitude  : 0.0f);

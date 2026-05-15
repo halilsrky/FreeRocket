@@ -22,6 +22,7 @@
 #include "stm32f4xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "cmd_task.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -288,7 +289,13 @@ void I2C1_EV_IRQHandler(void)
 void USART2_IRQHandler(void)
 {
   /* USER CODE BEGIN USART2_IRQn 0 */
-
+  /* Circular DMA + IDLE: her paketin sonunda IDLE flag'i ateşlenir */
+  if (__HAL_UART_GET_FLAG(&huart2, UART_FLAG_IDLE) &&
+      __HAL_UART_GET_IT_SOURCE(&huart2, UART_IT_IDLE))
+  {
+    __HAL_UART_CLEAR_IDLEFLAG(&huart2);  /* SR oku → DR oku (F4 errata) */
+    cmd_task_uart_idle_isr();
+  }
   /* USER CODE END USART2_IRQn 0 */
   HAL_UART_IRQHandler(&huart2);
   /* USER CODE BEGIN USART2_IRQn 1 */

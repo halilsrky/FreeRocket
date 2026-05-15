@@ -78,9 +78,10 @@ static void baro_task(void *arg)
     alt_kalman_t kf;
     alt_kalman_init(&kf);
 
-    float    alt_ref   = 0.0f;
-    bool     ref_set   = false;
-    uint32_t last_tick = 0U;
+    float    alt_ref      = 0.0f;
+    bool     ref_set      = false;
+    uint32_t last_tick    = 0U;
+    float    last_sim_time = -1.0f;  /* SUT: önceki baro paketinin sim zamanı */
 
     SystemMode_t prev_mode = MODE_NORMAL;
 
@@ -88,44 +89,56 @@ static void baro_task(void *arg)
     TickType_t wake_tick = xTaskGetTickCount();
 
     for (;;) {
-        vTaskDelayUntil(&wake_tick, pdMS_TO_TICKS(100));  /* 10 Hz */
-
         SystemMode_t mode = sys_mode_get();
 
         /* Mod geçişinde tüm state'i sıfırla */
         if (mode != prev_mode) {
-            ref_set   = false;
+            ref_set       = false;
+            last_sim_time = -1.0f;
             alt_kalman_init(&kf);
+            if (mode == MODE_SUT) {
+                kf.r_acc = 5000.0f;  /* ivme kanalı susturulmuş */
+                kf.r_alt = 1.0f;     /* baro varyansı ~0.25 m² → 1.0 temkinli ama gerçekçi */
+                kf.q     = 1.0f;     /* hız durumu hızlı değişebilsin (yanma fazı için) */
+            }
+            else wake_tick = xTaskGetTickCount(); /* NORMAL/SIT'e dönüşte timer sıfırla */
             flight_sm_reset();
             prev_mode = mode;
         }
 
-        /* ── SUT: sentetik veri yolu ──────────────────────────────────── */
+        /* ── SUT: yeni paket gelene kadar engelle (sabit 100 ms bekleme yok) ── */
         if (mode == MODE_SUT) {
-            sut_data_t sut;
-            if (!sys_mode_sut_peek(&sut)) continue;  /* henüz PC'den veri gelmedi */
+            sut_baro_t sut_baro;
+            if (!sys_mode_sut_baro_receive(&sut_baro, 200U)) continue;
 
             uint32_t now = HAL_GetTick();
 
             baro_snapshot_t baro_snap = {
                 .ts_ms    = now,
-                .pressure = sut.pressure,
-                .altitude = sut.altitude,
+                .pressure = sut_baro.pressure,
+                .altitude = sut_baro.altitude,
             };
             xQueueOverwrite(s_baro_q, &baro_snap);
 
             if (!ref_set) {
-                alt_ref   = sut.altitude;
-                ref_set   = true;
-                last_tick = now;
+                alt_ref       = sut_baro.altitude;
+                ref_set       = true;
+                last_sim_time = sut_baro.sim_time;
                 continue;
             }
 
-            float dt    = (float)(now - last_tick) * 0.001f;
-            last_tick   = now;
+            float dt = (last_sim_time < 0.0f) ? 0.1f
+                                               : (sut_baro.sim_time - last_sim_time);
+            if (dt <= 0.0f || dt > 1.0f) dt = 0.1f;  /* sıfır veya anormal aralık */
+            last_sim_time = sut_baro.sim_time;
 
-            float alt_rel      = sut.altitude - alt_ref;
-            float avert        = sut.accel_z - 9.81f;  /* Z yukarı, yerçekimi çıkarıldı */
+            float alt_rel = sut_baro.altitude - alt_ref;
+
+            /* SUT: IMU snapshot anlık değer taşır, 100 ms penceredeki son sample
+             * motor ateşlenmesinde 87 m/s² görebilir. Kalman yalnızca baro
+             * yüksekliği ile beslenir; ivme kanalı r_acc=5000 ile susturulmuş. */
+            float avert = 0.0f;
+
             float filtered_alt = alt_kalman_update(&kf, alt_rel, avert, dt);
 
             alt_snapshot_t alt_snap = {
@@ -136,19 +149,15 @@ static void baro_task(void *arg)
             };
             xQueueOverwrite(s_alt_q, &alt_snap);
 
-            /* Sentetik IMU: launch tespiti için SUT ivme değerleri,
-             * quaternion identity (yaw/tilt = 0) */
-            imu_snapshot_t sut_imu = {0};
-            sut_imu.accel.x = sut.accel_x;
-            sut_imu.accel.y = sut.accel_y;
-            sut_imu.accel.z = sut.accel_z;
-            sut_imu.q.w     = 1.0f;
-
-            flight_sm_update(&alt_snap, &sut_imu);
+            imu_snapshot_t imu_snap;
+            const imu_snapshot_t *imu_ptr = imu_snapshot_peek(&imu_snap) ? &imu_snap : NULL;
+            flight_sm_update(&alt_snap, imu_ptr);
             continue;
         }
 
-        /* ── NORMAL / SIT: gerçek sensör yolu ────────────────────────── */
+        /* ── NORMAL / SIT: sabit 10 Hz, gerçek sensör yolu ─────────────── */
+        vTaskDelayUntil(&wake_tick, pdMS_TO_TICKS(100));
+
         if (bme280_read(&hi2c3, raw) != HAL_OK) continue;
 
         bme280_data_t data;

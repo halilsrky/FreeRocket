@@ -111,7 +111,10 @@ class GroundStationApp:
         
         self.sut_screen.add_log("SUT mode started")
         if csv_data:
-            self.sut_screen.add_log(f"Loaded {len(csv_data)} rows from CSV")
+            duration = csv_data[-1]['time'] - csv_data[0]['time'] if len(csv_data) > 1 else 0.0
+            self.sut_screen.add_log(
+                f"CSV yüklendi: {len(csv_data)} satır, {duration:.2f} s"
+            )
     
     def _stop_sut_mode(self):
         """Stop SUT mode"""
@@ -183,34 +186,27 @@ class GroundStationApp:
         """Handle serial errors"""
         self.root.after(0, lambda: messagebox.showerror("Serial Error", message))
     
-    def _load_csv_data(self, filepath: str) -> Optional[List[List[float]]]:
-        """Load CSV data for SUT mode"""
+    def _load_csv_data(self, filepath: str) -> Optional[List[dict]]:
+        """
+        CSV'yi dict listesi olarak yükle.
+        Beklenen sütunlar: time, altitude, pressure,
+                           accel_x, accel_y, accel_z,
+                           gyro_x, gyro_y, gyro_z
+        Eksik sütunlar 0.0 olarak doldurulur.
+        """
+        REQUIRED = ('time', 'altitude', 'pressure',
+                    'accel_x', 'accel_y', 'accel_z',
+                    'gyro_x', 'gyro_y', 'gyro_z')
         try:
             data = []
             with open(filepath, 'r') as f:
-                reader = csv.reader(f)
-                
-                # Check for header
-                first_row = next(reader, None)
-                if first_row:
-                    # Check if first row is numeric
-                    try:
-                        values = [float(v) for v in first_row[:8]]
-                        data.append(values)
-                    except ValueError:
-                        pass  # Skip header row
-                
-                # Read remaining rows
+                reader = csv.DictReader(f)
                 for row in reader:
-                    if row:
-                        try:
-                            values = [float(v) for v in row[:8]]
-                            while len(values) < 8:
-                                values.append(0.0)
-                            data.append(values)
-                        except ValueError:
-                            continue
-            
+                    try:
+                        data.append({k: float(row.get(k, 0.0) or 0.0)
+                                     for k in REQUIRED})
+                    except (ValueError, TypeError):
+                        continue
             return data if data else None
         except Exception as e:
             messagebox.showerror("CSV Error", f"Failed to load CSV: {e}")

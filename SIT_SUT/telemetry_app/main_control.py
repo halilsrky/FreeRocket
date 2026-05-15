@@ -26,7 +26,7 @@ class MainControlScreen:
         
         # Variables
         self.port_var = tk.StringVar(value="COM20")
-        self.baud_var = tk.StringVar(value="115200")
+        self.baud_var = tk.StringVar(value="230400")
         self.log_enabled_var = tk.BooleanVar(value=False)
         self.log_dir_var = tk.StringVar(value="logs")
         self.csv_enabled_var = tk.BooleanVar(value=True)
@@ -77,7 +77,8 @@ class MainControlScreen:
         
         ttk.Label(baud_row, text="Baud Rate:", width=12).pack(side=tk.LEFT)
         baud_combo = ttk.Combobox(baud_row, textvariable=self.baud_var, width=15,
-                                  values=["9600", "19200", "38400", "57600", "115200"],
+                                  values=["9600", "19200", "38400", "57600",
+                                          "115200", "230400", "460800"],
                                   state="readonly")
         baud_combo.pack(side=tk.LEFT)
         
