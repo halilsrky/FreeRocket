@@ -26,6 +26,7 @@ typedef enum {
 #define FSM_BIT_MAIN_ALT    0x0040u  /* Ana paraşüt irtifasına ulaşıldı */
 #define FSM_BIT_MAIN        0x0080u  /* Ana paraşüt tetiklendi */
 #define FSM_BIT_LANDED      0x0100u  /* İniş tespit edildi */
+#define FSM_BIT_VEL_APOGEE  0x0200u  /* Hız bazlı apogee tespiti onaylandı */
 
 typedef struct {
     uint32_t      ts_ms;

@@ -81,13 +81,14 @@ class SutPlotWidget(pg.GraphicsLayoutWidget):
         # Faz geçişi: dikey çizgi ekle
         phase = status_to_phase(status)
         if phase != self._last_phase:
-            # Açı kaynaklı apogee acil durum → kırmızı, diğerleri sarı
-            if "Açı" in phase:
-                color = '#ff5252'
+            if "Açı+İrt." in phase:
+                color = '#ff9100'    # turuncu — her iki tespit onaylandı
+            elif "Açı" in phase:
+                color = '#ff5252'    # kırmızı — açı tetikledi, hız henüz yok
             elif phase == "ARMED":
-                color = '#40c4ff'
+                color = '#40c4ff'    # mavi
             else:
-                color = '#ffd600'
+                color = '#ffd600'    # sarı
             line = pg.InfiniteLine(
                 pos=sim_time,
                 angle=90,

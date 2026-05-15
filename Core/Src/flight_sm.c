@@ -110,29 +110,13 @@ void flight_sm_update(const alt_snapshot_t *alt, const imu_snapshot_t *imu)
         break;
 
     /* -----------------------------------------------------------------
-     * COAST: Motorsuz tırmanış.
-     * Çıkış: velocity < 0 (N örnekte) → APOGEE
-     * Not: açı kontrolü switch dışında fazdan bağımsız çalışır.
+     * COAST: Motorsuz tırmanış. Sadece arming eşiği burada kontrol edilir.
+     * Apogee tespitleri (hız ve açı) switch dışında fazdan bağımsız çalışır.
      * ----------------------------------------------------------------- */
     case FLIGHT_COAST:
         if (!s_armed && alt->altitude_rel > MIN_ARM_ALT_M) {
             s_armed = 1;
             s_status |= FSM_BIT_ARMED;
-        }
-
-        if (s_armed) {
-            /* İrtifa/hız bazlı apogee: hız negatife döndü ve N örnekte sabit kaldı */
-            if (alt->velocity < 0.0f) {
-                s_apogee_cnt++;
-            } else if (s_apogee_cnt > 0) {
-                s_apogee_cnt--;
-            }
-
-            if (s_apogee_cnt >= APOGEE_CONFIRM) {
-                s_apogee_cnt = 0;
-                s_status |= FSM_BIT_APOGEE;
-                s_phase = FLIGHT_APOGEE;
-            }
         }
         break;
 
@@ -189,10 +173,26 @@ void flight_sm_update(const alt_snapshot_t *alt, const imu_snapshot_t *imu)
         break;
     }
 
-    /* Açı eşiği — armed olduktan sonra fazdan bağımsız her güncellemede kontrol edilir.
-     * İrtifa kaynaklı apogee daha önce tetiklenmiş olsa bile TILT_EMERG set edilir;
-     * açı kaynaklı apogee önce geldiyse irtifa tespiti de COAST'ta sürer ve
-     * onaylanınca FSM_BIT_APOGEE zaten set olduğu için sadece publish yeterli. */
+    /* Hız bazlı apogee — armed olduktan sonra fazdan bağımsız izlenir.
+     * Açı erken tetiklemiş ve faz geçmiş olsa bile sayaç artmaya devam eder;
+     * onaylanınca FSM_BIT_VEL_APOGEE set edilir ve Python tarafı iki tespiti ayırt eder. */
+    if (s_armed) {
+        if (alt->velocity < 0.0f) {
+            s_apogee_cnt++;
+        } else if (s_apogee_cnt > 0) {
+            s_apogee_cnt--;
+        }
+        if (s_apogee_cnt >= APOGEE_CONFIRM) {
+            s_apogee_cnt = 0;
+            s_status |= FSM_BIT_VEL_APOGEE | FSM_BIT_APOGEE;
+            if (s_phase == FLIGHT_COAST) {
+                s_phase = FLIGHT_APOGEE;
+            }
+        }
+    }
+
+    /* Açı bazlı apogee — armed olduktan sonra fazdan bağımsız izlenir.
+     * İrtifa erken tetiklemiş olsa bile theta eşiği aşılınca TILT_EMERG set edilir. */
     if (s_armed && imu && imu->euler.theta > MAX_TILT_DEG) {
         s_status |= FSM_BIT_TILT_EMERG;
         if (s_phase == FLIGHT_COAST) {

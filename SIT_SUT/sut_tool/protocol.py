@@ -42,9 +42,13 @@ def status_to_phase(status: int) -> str:
     if status & 0x0020:                  # FSM_BIT_DROGUE
         return "DROGUE DESC"
     if status & 0x0010:                  # FSM_BIT_APOGEE
-        if status & 0x0008:              # FSM_BIT_TILT_EMERG — açı kaynaklı
-            return "APOGEE (Açı)"
-        return "APOGEE (İrt.)"           # irtifa/hız kaynaklı
+        tilt = bool(status & 0x0008)    # FSM_BIT_TILT_EMERG
+        vel  = bool(status & 0x0200)    # FSM_BIT_VEL_APOGEE
+        if tilt and vel:
+            return "APOGEE (Açı+İrt.)"  # her iki tespit de onaylandı
+        if tilt:
+            return "APOGEE (Açı)"       # sadece açı tetikledi, hız henüz onaylamadı
+        return "APOGEE (İrt.)"          # hız/irtifa kaynaklı
     if status & 0x0004:                  # FSM_BIT_ARMED — arming aktif, hâlâ COAST
         return "ARMED"
     if status & 0x0002:                  # FSM_BIT_BURNOUT — henüz arming yok
