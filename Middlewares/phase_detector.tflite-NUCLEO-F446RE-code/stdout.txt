@@ -1,0 +1,65 @@
+>>> stedgeai generate --model phase_detector.tflite --optimization time --target stm32f4 --name network --workspace workspace --output output
+ST Edge AI Core v4.0.0-20500 359356bb0
+Creating c (debug) info json file network_c_info.json
+ Exec/report summary (generate)
+ --------------------------------------------------------------------------------------------------------------------------
+ model file         :   phase_detector.tflite                    
+ type               :   tflite                                                                                             
+ c_name             :   network                                                                                            
+ compression        :   lossless                                                                                           
+ options            :   allocate-inputs, allocate-outputs, use-lite-runtime, use-st-ai                                     
+ optimization       :   time                                                                                               
+ target/series      :   stm32f4                                                                                            
+ workspace dir      :   workspace                                
+ output dir         :   output                                   
+ model_fmt          :   ss/sa per channel                                                                                  
+ model_name         :   phase_detector                                                                                     
+ model_hash         :   0x93c2f1d82fac8708c3a85ee6a12db108                                                                 
+ params #           :   3,205 items (3.43 KiB)                                                                             
+ --------------------------------------------------------------------------------------------------------------------------
+ input 1/1          :   'serving_default_keras_tensor0', int8(1x14), 14 Bytes, QLinear(0.192893714,-8,int8), activations   
+ output 1/1         :   'nl_3', int8(1x5), 5 Bytes, QLinear(0.003906250,-128,int8), activations                            
+ macc               :   3,280                                                                                              
+ weights (ro)       :   3,508 B (3.43 KiB) (1 segment) / -9,312(-72.6%) vs float model                                     
+ activations (rw)   :   748 B (748 B) (1 segment) *                                                                        
+ ram (total)        :   748 B (748 B) = 748 + 0 + 0                                                                        
+ --------------------------------------------------------------------------------------------------------------------------
+ (*) 'input'/'output' buffers are allocated in the activations buffer
+Computing AI RT data/code size (target=stm32f4)..
+ Requested memory size by section - "stm32f4" target
+ ------------------------------ ------- -------- ------- -----
+ module                            text   rodata    data   bss
+ ------------------------------ ------- -------- ------- -----
+ NetworkRuntime1200_CM4_GCC.a     5,084        0       0     0
+ network.o                        1,206      653   1,344     0
+ lib (toolchain)*                     0        0       0     0
+ ------------------------------ ------- -------- ------- -----
+ RT total**                       6,290      653   1,344     0
+ ------------------------------ ------- -------- ------- -----
+ weights                              0    3,512       0     0
+ activations                          0        0       0   748
+ states                               0        0       0     0
+ io                                   0        0       0     0
+ ------------------------------ ------- -------- ------- -----
+ TOTAL                            6,290    4,165   1,344   748
+ ------------------------------ ------- -------- ------- -----
+ *  toolchain objects (libm/libgcc*)
+ ** RT AI runtime objects (kernels+infrastructure)
+  Summary - "stm32f4" target
+  ---------------------------------------------------
+               FLASH (ro)      %*   RAM (rw)       %
+  ---------------------------------------------------
+  RT total          8,287   70.2%      1,344   64.2%
+  ---------------------------------------------------
+  TOTAL            11,799              2,092
+  ---------------------------------------------------
+  *  rt/total
+ Generated files (5)
+ ------------------------------------------------------------------------------------
+ network_data.h
+ network_data.c
+ network.h
+ network.c
+ network_details.h
+Creating txt report file network_generate_report.txt
+elapsed time (GENERATE): 2.003s

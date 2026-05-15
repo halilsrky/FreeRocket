@@ -21,6 +21,8 @@ set(MX_Include_Dirs
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/SEGGER/Config
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/SEGGER/SEGGER
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/SEGGER/OS
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/phase_detector.tflite-NUCLEO-F446RE-code/Inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/phase_detector.tflite-NUCLEO-F446RE-code
 )
 
 # STM32CubeMX generated application sources
@@ -39,8 +41,11 @@ set(MX_Application_Src
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/gnss_task.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/telemetry_task.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/sys_mode.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/phase_ml.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/sut_task.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/cmd_task.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/phase_detector.tflite-NUCLEO-F446RE-code/network.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/phase_detector.tflite-NUCLEO-F446RE-code/network_data.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/dma.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/i2c.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/tim.c
@@ -100,7 +105,7 @@ set(FreeRTOS_Src
 
 # Link directories setup
 set(MX_LINK_DIRS
-
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/phase_detector.tflite-NUCLEO-F446RE-code/Lib
 )
 # Project static libraries
 set(MX_LINK_LIBS
@@ -108,6 +113,8 @@ set(MX_LINK_LIBS
     ${TOOLCHAIN_LINK_LIBRARIES}
     FreeRTOS
     SEGGER
+    :NetworkRuntime1200_CM4_GCC.a
+    m
 )
 # Interface library for includes and symbols
 add_library(stm32cubemx INTERFACE)

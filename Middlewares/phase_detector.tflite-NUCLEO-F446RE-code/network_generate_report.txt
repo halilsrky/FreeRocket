@@ -1,0 +1,189 @@
+ST Edge AI Core v4.0.0-20500 359356bb0
+Created date          : 2026-05-15 11:35:04
+Parameters            : generate --model /tmp/stm32ai_service/65de4f10-e0eb-4fe3-bbd6-b87c2d38e138/phase_detector.tflite --optimization time --target stm32f4 --name network --workspace /tmp/stm32ai_service/65de4f10-e0eb-4fe3-bbd6-b87c2d38e138/workspace --output /tmp/stm32ai_service/65de4f10-e0eb-4fe3-bbd6-b87c2d38e138/output
+
+Exec/report summary (generate)
+--------------------------------------------------------------------------------------------------------------------------
+model file         :   /tmp/stm32ai_service/65de4f10-e0eb-4fe3-bbd6-b87c2d38e138/phase_detector.tflite                    
+type               :   tflite                                                                                             
+c_name             :   network                                                                                            
+compression        :   lossless                                                                                           
+options            :   allocate-inputs, allocate-outputs, use-lite-runtime, use-st-ai                                     
+optimization       :   time                                                                                               
+target/series      :   stm32f4                                                                                            
+workspace dir      :   /tmp/stm32ai_service/65de4f10-e0eb-4fe3-bbd6-b87c2d38e138/workspace                                
+output dir         :   /tmp/stm32ai_service/65de4f10-e0eb-4fe3-bbd6-b87c2d38e138/output                                   
+model_fmt          :   ss/sa per channel                                                                                  
+model_name         :   phase_detector                                                                                     
+model_hash         :   0x93c2f1d82fac8708c3a85ee6a12db108                                                                 
+params #           :   3,205 items (3.43 KiB)                                                                             
+--------------------------------------------------------------------------------------------------------------------------
+input 1/1          :   'serving_default_keras_tensor0', int8(1x14), 14 Bytes, QLinear(0.192893714,-8,int8), activations   
+output 1/1         :   'nl_3', int8(1x5), 5 Bytes, QLinear(0.003906250,-128,int8), activations                            
+macc               :   3,280                                                                                              
+weights (ro)       :   3,508 B (3.43 KiB) (1 segment) / -9,312(-72.6%) vs float model                                     
+activations (rw)   :   748 B (748 B) (1 segment) *                                                                        
+ram (total)        :   748 B (748 B) = 748 + 0 + 0                                                                        
+--------------------------------------------------------------------------------------------------------------------------
+(*) 'input'/'output' buffers are allocated in the activations buffer
+
+Model name - phase_detector
+------ ------------------------------------------------ ------------- ------------- ------- -------------------------------- --- ----------------- ----------------- --------------------- 
+m_id   layer (type,original)                            oshape        param/size       macc                     connected to   | c_size            c_macc            c_type                
+------ ------------------------------------------------ ------------- ------------- ------- -------------------------------- --- ----------------- ----------------- --------------------- 
+0      serving_default_keras_tensor0 (Input, )          [b:1,c:14]                                                             | +1,152(+100.0%)   +960(+100.0%)     Dense_[0]             
+       phase_detector_1_d..e_1_MatMul (Placeholder, )   [b:64,c:14]   896/896                                                  | -896(-100.0%)                       
+       phase_detector_1_d.._1_BiasAdd (Placeholder, )   [b:64]        64/256                                                   | -256(-100.0%)                       
+       gemm_0 (Gemm, FULLY_CONNECTED)                   [b:1,c:64]                      960    serving_default_keras_tensor0   |                   -960(-100.0%)     
+                                                                                              phase_detector_1_d..e_1_MatMul   | 
+                                                                                              phase_detector_1_d.._1_BiasAdd   | 
+       nl_0_nl (Nonlinearity, FULLY_CONNECTED)          [b:1,c:64]                       64                           gemm_0   |                   -64(-100.0%)      
+------ ------------------------------------------------ ------------- ------------- ------- -------------------------------- --- ----------------- ----------------- --------------------- 
+1      phase_detector_1_d..1_2_MatMul (Placeholder, )   [b:32,c:64]   2,048/2,048                                              | +128(+6.2%)       +2,080(+100.0%)   Dense_[1]             
+       phase_detector_1_d.._2_BiasAdd (Placeholder, )   [b:32]        32/128                                                   | -128(-100.0%)                       
+       gemm_1 (Gemm, FULLY_CONNECTED)                   [b:1,c:32]                    2,080                          nl_0_nl   |                   -2,080(-100.0%)   
+                                                                                              phase_detector_1_d..1_2_MatMul   | 
+                                                                                              phase_detector_1_d.._2_BiasAdd   | 
+       nl_1_nl (Nonlinearity, FULLY_CONNECTED)          [b:1,c:32]                       32                           gemm_1   |                   -32(-100.0%)      
+------ ------------------------------------------------ ------------- ------------- ------- -------------------------------- --- ----------------- ----------------- --------------------- 
+2      phase_detector_1_d..2_1_MatMul (Placeholder, )   [b:5,c:32]    160/160                                                  | +20(+12.5%)       +165(+100.0%)     Dense_[2]             
+       phase_detector_1_d.._1_BiasAdd (Placeholder, )   [b:5]         5/20                                                     | -20(-100.0%)                        
+       gemm_2 (Gemm, FULLY_CONNECTED)                   [b:1,c:5]                       165                          nl_1_nl   |                   -165(-100.0%)     
+                                                                                              phase_detector_1_d..2_1_MatMul   | 
+                                                                                              phase_detector_1_d.._1_BiasAdd   | 
+------ ------------------------------------------------ ------------- ------------- ------- -------------------------------- --- ----------------- ----------------- --------------------- 
+3      nl_3 (Nonlinearity, SOFTMAX)                     [b:1,c:5]                        75                           gemm_2   |                                     Nonlinearity_[o][3]   
+------ ------------------------------------------------ ------------- ------------- ------- -------------------------------- --- ----------------- ----------------- --------------------- 
+model/c-model: macc=3,376/3,280 -96(-2.8%) weights=3,508/3,508  activations=--/748 io=--/0
+
+
+
+Generated C-graph summary
+------------------------------------------------------------------------------------------------------------------------
+model name            : phase_detector
+c-name                : network
+c-node #              : 4
+c-array #             : 15
+activations size      : 748 (1 segment)
+weights size          : 3508 (1 segment)
+macc                  : 3280
+inputs                : ['serving_default_keras_tensor0_output']
+outputs               : ['nl_3_output']
+
+C-Arrays (15)
+------ -------------------------------------- ----------- ------------------------- ----------- --------- 
+c_id   name (*_array)                         item/size   domain/mem-pool           c-type      comment   
+------ -------------------------------------- ----------- ------------------------- ----------- --------- 
+0      gemm_0_bias                            64/256      weights/weights           const s32             
+1      gemm_0_output                          64/64       activations/**default**   s8                    
+2      gemm_0_scratch0                        334/668     activations/**default**   s16                   
+3      gemm_0_weights                         896/896     weights/weights           const s8              
+4      gemm_1_bias                            32/128      weights/weights           const s32             
+5      gemm_1_output                          32/32       activations/**default**   s8                    
+6      gemm_1_scratch0                        224/448     activations/**default**   s16                   
+7      gemm_1_weights                         2048/2048   weights/weights           const s8              
+8      gemm_2_bias                            5/20        weights/weights           const s32             
+9      gemm_2_output                          5/5         activations/**default**   s8                    
+10     gemm_2_scratch0                        57/114      activations/**default**   s16                   
+11     gemm_2_weights                         160/160     weights/weights           const s8              
+12     nl_3_output                            5/5         activations/**default**   s8          /output   
+13     nl_3_scratch0                          31/124      activations/**default**   s32                   
+14     serving_default_keras_tensor0_output   14/14       activations/**default**   s8          /input    
+------ -------------------------------------- ----------- ------------------------- ----------- --------- 
+
+C-Layers (4)
+------ ---------------- ---- --------------- ------ ------ ----------------------------------------- ------------------ 
+c_id   name (*_layer)   id   layer_type      macc   rom    tensors                                   shape (array id)   
+------ ---------------- ---- --------------- ------ ------ ----------------------------------------- ------------------ 
+0      gemm_0           0    Dense           960    1152   I: serving_default_keras_tensor0_output   int8(1x14) (14)    
+                                                           S: gemm_0_scratch0                                           
+                                                           W: gemm_0_weights                         int8(64x14) (3)    
+                                                           W: gemm_0_bias                            int32(64) (0)      
+                                                           O: gemm_0_output                          int8(1x64) (1)     
+------ ---------------- ---- --------------- ------ ------ ----------------------------------------- ------------------ 
+1      gemm_1           1    Dense           2080   2176   I: gemm_0_output                          int8(1x64) (1)     
+                                                           S: gemm_1_scratch0                                           
+                                                           W: gemm_1_weights                         int8(32x64) (7)    
+                                                           W: gemm_1_bias                            int32(32) (4)      
+                                                           O: gemm_1_output                          int8(1x32) (5)     
+------ ---------------- ---- --------------- ------ ------ ----------------------------------------- ------------------ 
+2      gemm_2           2    Dense           165    180    I: gemm_1_output                          int8(1x32) (5)     
+                                                           S: gemm_2_scratch0                                           
+                                                           W: gemm_2_weights                         int8(5x32) (11)    
+                                                           W: gemm_2_bias                            int32(5) (8)       
+                                                           O: gemm_2_output                          int8(1x5) (9)      
+------ ---------------- ---- --------------- ------ ------ ----------------------------------------- ------------------ 
+3      nl_3             3    Nonlinearity    75     0      I: gemm_2_output                          int8(1x5) (9)      
+                                                           S: nl_3_scratch0                                             
+                                                           O: nl_3_output                            int8(1x5) (12)     
+------ ---------------- ---- --------------- ------ ------ ----------------------------------------- ------------------ 
+
+
+
+Number of operations per c-layer
+------- ------ ---------------------- ------- ------------ 
+c_id    m_id   name (type)                #op         type 
+------- ------ ---------------------- ------- ------------ 
+0       0      gemm_0 (Dense)             960   smul_s8_s8 
+1       1      gemm_1 (Dense)           2,080   smul_s8_s8 
+2       2      gemm_2 (Dense)             165   smul_s8_s8 
+3       3      nl_3 (Nonlinearity)         75     op_s8_s8 
+------- ------ ---------------------- ------- ------------ 
+total                                   3,280 
+
+Number of operation types
+---------------- ------- ----------- 
+operation type         #           % 
+---------------- ------- ----------- 
+smul_s8_s8         3,205       97.7% 
+op_s8_s8              75        2.3% 
+
+Complexity report (model)
+------ ----------------------------------- ------------------------- ------------------------- ------ 
+m_id   name                                c_macc                    c_rom                     c_id   
+------ ----------------------------------- ------------------------- ------------------------- ------ 
+0      serving_default_keras_tensor0       |||||||           29.3%   ||||||||          32.8%   [0]    
+1      phase_detector_1_dense_1_2_MatMul   ||||||||||||||||  63.4%   ||||||||||||||||  62.0%   [1]    
+2      phase_detector_1_dense_2_1_MatMul   ||                 5.0%   ||                 5.1%   [2]    
+3      nl_3                                |                  2.3%   |                  0.0%   [3]    
+------ ----------------------------------- ------------------------- ------------------------- ------ 
+macc=3,280 weights=3,508 act=748 ram_io=0
+ 
+ Requested memory size by section - "stm32f4" target
+ ------------------------------ ------- -------- ------- ----- 
+ module                            text   rodata    data   bss 
+ ------------------------------ ------- -------- ------- ----- 
+ NetworkRuntime1200_CM4_GCC.a     5,084        0       0     0 
+ network.o                        1,206      653   1,344     0 
+ lib (toolchain)*                     0        0       0     0 
+ ------------------------------ ------- -------- ------- ----- 
+ RT total**                       6,290      653   1,344     0 
+ ------------------------------ ------- -------- ------- ----- 
+ weights                              0    3,512       0     0 
+ activations                          0        0       0   748 
+ states                               0        0       0     0 
+ io                                   0        0       0     0 
+ ------------------------------ ------- -------- ------- ----- 
+ TOTAL                            6,290    4,165   1,344   748 
+ ------------------------------ ------- -------- ------- ----- 
+ *  toolchain objects (libm/libgcc*)
+ ** RT AI runtime objects (kernels+infrastructure)
+  
+  Summary - "stm32f4" target
+  ---------------------------------------------------
+               FLASH (ro)      %*   RAM (rw)       % 
+  ---------------------------------------------------
+  RT total          8,287   70.2%      1,344   64.2% 
+  ---------------------------------------------------
+  TOTAL            11,799              2,092         
+  ---------------------------------------------------
+  *  rt/total
+
+
+Generated files (5)
+------------------------------------------------------------------------------------ 
+/tmp/stm32ai_service/65de4f10-e0eb-4fe3-bbd6-b87c2d38e138/output/network_data.h      
+/tmp/stm32ai_service/65de4f10-e0eb-4fe3-bbd6-b87c2d38e138/output/network_data.c      
+/tmp/stm32ai_service/65de4f10-e0eb-4fe3-bbd6-b87c2d38e138/output/network.h           
+/tmp/stm32ai_service/65de4f10-e0eb-4fe3-bbd6-b87c2d38e138/output/network.c           
+/tmp/stm32ai_service/65de4f10-e0eb-4fe3-bbd6-b87c2d38e138/output/network_details.h   
