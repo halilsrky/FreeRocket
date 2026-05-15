@@ -16,7 +16,7 @@ typedef struct {
 
     struct { float w, x, y, z; } q;    /* normalize quaternion */
 
-    struct { float roll, pitch, yaw; } euler;  /* derece */
+    struct { float roll, pitch, yaw, theta; } euler;  /* derece — theta: dikey eksenden sapma */
 } imu_snapshot_t;
 
 /*

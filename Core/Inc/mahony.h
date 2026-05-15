@@ -28,4 +28,8 @@ void mahony_update(mahony_t *m,
 void mahony_get_euler(const mahony_t *m,
                       float *roll, float *pitch, float *yaw);
 
+/* Roketin dikey eksenden sapma açısı — theta (derece).
+ * θ=0 dik yukarı, θ=90 yatay, θ=180 dik aşağı. */
+float mahony_get_theta(const mahony_t *m);
+
 #endif /* MAHONY_H */

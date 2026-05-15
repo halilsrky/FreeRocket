@@ -11,7 +11,7 @@
 #define BURNOUT_AVERT_THR    0.0f   /* m/s²  — Kalman dikey ivmesi < 0 → motor söndü */
 #define BURNOUT_CONFIRM         5   /* örnek — 10 Hz'de 500 ms */
 #define BURNOUT_TIMEOUT_MS   8000   /* ms    — max boost süresi */
-#define MIN_ARM_ALT_M      1200.0f   /* m AGL — arming irtifası */
+#define MIN_ARM_ALT_M      1700.0f   /* m AGL — arming irtifası */
 #define MAX_TILT_DEG        70.0f   /* derece — acil drogue açı eşiği */
 #define APOGEE_CONFIRM          5   /* örnek — 10 Hz'de 500 ms */
 #define MAIN_ALT_M         300.0f   /* m AGL — ana paraşüt irtifası */
@@ -44,13 +44,6 @@ static float total_accel(const imu_snapshot_t *imu)
 {
     float ax = imu->accel.x, ay = imu->accel.y, az = imu->accel.z;
     return sqrtf(ax*ax + ay*ay + az*az);
-}
-
-/* Dikey ekseninden toplam eğim açısı (derece) — sqrt(roll²+pitch²) */
-static float tilt_deg(const imu_snapshot_t *imu)
-{
-    float r = imu->euler.roll, p = imu->euler.pitch;
-    return sqrtf(r*r + p*p);
 }
 
 static void publish(uint32_t ts)
@@ -119,7 +112,7 @@ void flight_sm_update(const alt_snapshot_t *alt, const imu_snapshot_t *imu)
     /* -----------------------------------------------------------------
      * COAST: Motorsuz tırmanış.
      * Çıkış: velocity < 0 (N örnekte) → APOGEE
-     *        Veya açı eşiği aşılırsa acil → APOGEE
+     * Not: açı kontrolü switch dışında fazdan bağımsız çalışır.
      * ----------------------------------------------------------------- */
     case FLIGHT_COAST:
         if (!s_armed && alt->altitude_rel > MIN_ARM_ALT_M) {
@@ -128,14 +121,7 @@ void flight_sm_update(const alt_snapshot_t *alt, const imu_snapshot_t *imu)
         }
 
         if (s_armed) {
-            /* Acil durum: aşırı eğim */
-            if (imu && tilt_deg(imu) > MAX_TILT_DEG) {
-                s_status |= FSM_BIT_TILT_EMERG | FSM_BIT_APOGEE;
-                s_phase = FLIGHT_APOGEE;
-                break;
-            }
-
-            /* Normal apogee: hız negatife döndü ve N örnekte sabit kaldı */
+            /* İrtifa/hız bazlı apogee: hız negatife döndü ve N örnekte sabit kaldı */
             if (alt->velocity < 0.0f) {
                 s_apogee_cnt++;
             } else if (s_apogee_cnt > 0) {
@@ -201,6 +187,18 @@ void flight_sm_update(const alt_snapshot_t *alt, const imu_snapshot_t *imu)
      * ----------------------------------------------------------------- */
     case FLIGHT_LANDED:
         break;
+    }
+
+    /* Açı eşiği — armed olduktan sonra fazdan bağımsız her güncellemede kontrol edilir.
+     * İrtifa kaynaklı apogee daha önce tetiklenmiş olsa bile TILT_EMERG set edilir;
+     * açı kaynaklı apogee önce geldiyse irtifa tespiti de COAST'ta sürer ve
+     * onaylanınca FSM_BIT_APOGEE zaten set olduğu için sadece publish yeterli. */
+    if (s_armed && imu && imu->euler.theta > MAX_TILT_DEG) {
+        s_status |= FSM_BIT_TILT_EMERG;
+        if (s_phase == FLIGHT_COAST) {
+            s_status |= FSM_BIT_APOGEE;
+            s_phase = FLIGHT_APOGEE;
+        }
     }
 
     publish(alt->ts_ms);

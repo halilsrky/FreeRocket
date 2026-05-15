@@ -127,6 +127,7 @@ static void imu_task(void *arg)
                              &snap.euler.roll,
                              &snap.euler.pitch,
                              &snap.euler.yaw);
+            snap.euler.theta = mahony_get_theta(&mahony);
 
             xQueueOverwrite(s_snapshot_q, &snap);
 

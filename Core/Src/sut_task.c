@@ -174,6 +174,7 @@ static void sut_task_fn(void *arg)
         imu_snap.euler.roll  = roll;
         imu_snap.euler.pitch = pitch;
         imu_snap.euler.yaw   = yaw;
+        imu_snap.euler.theta = mahony_get_theta(&mah);
 
         flight_sm_update(&alt_snap, &imu_snap);
 

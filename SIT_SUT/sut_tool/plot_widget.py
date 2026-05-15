@@ -81,18 +81,26 @@ class SutPlotWidget(pg.GraphicsLayoutWidget):
         # Faz geçişi: dikey çizgi ekle
         phase = status_to_phase(status)
         if phase != self._last_phase:
+            # Açı kaynaklı apogee acil durum → kırmızı, diğerleri sarı
+            if "Açı" in phase:
+                color = '#ff5252'
+            elif phase == "ARMED":
+                color = '#40c4ff'
+            else:
+                color = '#ffd600'
             line = pg.InfiniteLine(
                 pos=sim_time,
                 angle=90,
-                pen=pg.mkPen(color='#ffd600', width=1, style=Qt.DashLine),
+                pen=pg.mkPen(color=color, width=1, style=Qt.DashLine),
                 label=phase,
                 labelOpts={
                     'position': 0.92,
-                    'color': '#ffd600',
+                    'color': color,
                     'fill': pg.mkBrush('#1e1e1e80'),
                     'movable': False,
                 },
             )
-            self.p_recv.addItem(line)
+            # ignoreBounds=True: sınır hesabına dahil etme → titreme önlenir
+            self.p_recv.addItem(line, ignoreBounds=True)
             self._phase_lines.append(line)
             self._last_phase = phase

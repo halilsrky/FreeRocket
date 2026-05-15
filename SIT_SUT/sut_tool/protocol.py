@@ -35,17 +35,21 @@ WINDOW_S = 0.1             # 100 ms simülasyon penceresi
 
 # ── flight.status bitmask → faz adı ───────────────────────────────────────
 def status_to_phase(status: int) -> str:
-    if status & 0x0100:
+    if status & 0x0100:                  # FSM_BIT_LANDED
         return "LANDED"
-    if status & 0x0080:
+    if status & 0x0080:                  # FSM_BIT_MAIN
         return "MAIN DESC"
-    if status & 0x0020:
+    if status & 0x0020:                  # FSM_BIT_DROGUE
         return "DROGUE DESC"
-    if status & 0x0010:
-        return "APOGEE"
-    if status & 0x0002:
+    if status & 0x0010:                  # FSM_BIT_APOGEE
+        if status & 0x0008:              # FSM_BIT_TILT_EMERG — açı kaynaklı
+            return "APOGEE (Açı)"
+        return "APOGEE (İrt.)"           # irtifa/hız kaynaklı
+    if status & 0x0004:                  # FSM_BIT_ARMED — arming aktif, hâlâ COAST
+        return "ARMED"
+    if status & 0x0002:                  # FSM_BIT_BURNOUT — henüz arming yok
         return "COAST"
-    if status & 0x0001:
+    if status & 0x0001:                  # FSM_BIT_LAUNCHED
         return "BOOST"
     return "IDLE"
 
