@@ -86,6 +86,12 @@ static void telem_task(void *arg)
     for (;;) {
         vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(TELEM_PERIOD_MS));
 
+        /* SUT modunda telemetri gönderilmez — sut_task kendi response'ını gönderir */
+        if (sys_mode_get() == MODE_SUT) {
+            last_wake = xTaskGetTickCount();
+            continue;
+        }
+
         imu_snapshot_t    imu    = {0};
         baro_snapshot_t   baro   = {0};
         alt_snapshot_t    alt    = {0};

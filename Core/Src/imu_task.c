@@ -13,11 +13,10 @@
 #include <stdbool.h>
 
 /* ── Notification bit masks ── */
-#define NOTIFY_ACC_DRDY    (1U << 0)
-#define NOTIFY_GYRO_DRDY   (1U << 1)
-#define NOTIFY_DMA_DONE    (1U << 2)
-#define NOTIFY_I2C_ERROR   (1U << 3)
-#define NOTIFY_SUT_BATCH   (1U << 4)
+#define NOTIFY_ACC_DRDY  (1U << 0)
+#define NOTIFY_GYRO_DRDY (1U << 1)
+#define NOTIFY_DMA_DONE  (1U << 2)
+#define NOTIFY_I2C_ERROR (1U << 3)
 
 /* ── Sensor config ── */
 static const bmi088_config_t k_bmi_cfg = {
@@ -32,37 +31,9 @@ static const bmi088_config_t k_bmi_cfg = {
 typedef enum { DMA_IDLE, DMA_READING_ACC, DMA_READING_GYRO } dma_state_t;
 
 static TaskHandle_t  s_handle;
-static QueueHandle_t s_snapshot_q;   /* depth=1 — daima en güncel snapshot */
+static QueueHandle_t s_snapshot_q;
 static uint8_t       s_acc_buf[6];
 static uint8_t       s_gyro_buf[6];
-
-/* ── Forward declarations ── */
-static void imu_task(void *arg);
-
-/* ── Public API ── */
-
-void imu_task_create(void)
-{
-    /*
-     * Queue task başlamadan önce oluşturulur — telemetry task create
-     * sırasında queue zaten hazır olsun.
-     */
-    s_snapshot_q = xQueueCreate(1, sizeof(imu_snapshot_t));
-
-    static const osThreadAttr_t attr = {
-        .name       = "IMU",
-        .stack_size = 512 * 4,
-        .priority   = osPriorityHigh,
-    };
-    osThreadNew(imu_task, NULL, &attr);
-}
-
-bool imu_snapshot_peek(imu_snapshot_t *out)
-{
-    return xQueuePeek(s_snapshot_q, out, 0) == pdTRUE;
-}
-
-/* ── Task implementation ── */
 
 static void imu_task(void *arg)
 {
@@ -92,75 +63,18 @@ static void imu_task(void *arg)
 
     float    ax = 0.0f, ay = 0.0f, az = 0.0f;
     float    gx = 0.0f, gy = 0.0f, gz = 0.0f;
-    uint32_t last_tick  = 0U;
-    SystemMode_t prev_mode = MODE_NORMAL;
+    uint32_t last_tick = 0U;
 
     for (;;) {
+        /* SUT modunda sensör okuma yapılmaz — sut_task kendi Mahony'sini çalıştırır */
+        if (sys_mode_get() == MODE_SUT) {
+            vTaskDelay(pdMS_TO_TICKS(200U));
+            continue;
+        }
+
         uint32_t bits = 0;
-        xTaskNotifyWait(0U, UINT32_MAX, &bits, pdMS_TO_TICKS(500));
+        xTaskNotifyWait(0U, UINT32_MAX, &bits, pdMS_TO_TICKS(500U));
 
-        SystemMode_t mode = sys_mode_get();
-
-        /* Mod değişiminde Mahony ve zamanlayıcıyı sıfırla */
-        if (mode != prev_mode) {
-            mahony_init(&mahony);
-            last_tick  = 0U;
-            acc_fresh  = false;
-            gyro_fresh = false;
-            dma_state  = DMA_IDLE;
-            prev_mode  = mode;
-        }
-
-        /* ── SUT modu: 100 ms batch IMU yolu ────────────────────────
-         * Her batch N örnek içerir; her örneğin sim_time'ına göre
-         * doğru dt hesaplanır ve Mahony sırayla güncellenir.
-         */
-        if (mode == MODE_SUT) {
-            if (bits & NOTIFY_SUT_BATCH) {
-                sut_imu_batch_t batch;
-                if (sys_mode_sut_imu_batch_receive(&batch, 0U)) {
-                    float prev_sim = -1.0f;
-                    for (uint8_t i = 0u; i < batch.count; i++) {
-                        float dt = (prev_sim < 0.0f)
-                                   ? 0.005f
-                                   : (batch.samples[i].sim_time - prev_sim);
-                        if (dt <= 0.0f || dt > 0.2f) dt = 0.005f;
-                        prev_sim = batch.samples[i].sim_time;
-
-                        mahony_update(&mahony,
-                                      batch.samples[i].gyro_x,
-                                      batch.samples[i].gyro_y,
-                                      batch.samples[i].gyro_z,
-                                      0.0f, 0.0f, 0.0f,
-                                      dt);
-                    }
-
-                    uint32_t now = HAL_GetTick();
-                    const sut_imu_sample_t *last =
-                        &batch.samples[batch.count > 0u ? batch.count - 1u : 0u];
-
-                    imu_snapshot_t snap;
-                    snap.ts_ms   = now;
-                    snap.accel.x = 0.0f;
-                    snap.accel.y = 0.0f;
-                    snap.accel.z = 0.0f;
-                    snap.gyro.x  = last->gyro_x;
-                    snap.gyro.y  = last->gyro_y;
-                    snap.gyro.z  = last->gyro_z;
-                    snap.q.w = mahony.q[0]; snap.q.x = mahony.q[1];
-                    snap.q.y = mahony.q[2]; snap.q.z = mahony.q[3];
-                    mahony_get_euler(&mahony,
-                                     &snap.euler.roll,
-                                     &snap.euler.pitch,
-                                     &snap.euler.yaw);
-
-                    xQueueOverwrite(s_snapshot_q, &snap);
-                }
-            }
-            continue;  /* DRDY bitlerini SUT modunda yoksay */
-        }
-
-        /* ── NORMAL / SIT modu: gerçek sensör yolu ───────────────── */
         if (bits & NOTIFY_ACC_DRDY)  acc_pending  = true;
         if (bits & NOTIFY_GYRO_DRDY) gyro_pending = true;
 
@@ -222,13 +136,21 @@ static void imu_task(void *arg)
     }
 }
 
-/* ── SUT batch teslimi (cmd_task → imu_task) ── */
-void imu_task_notify_sut_batch(const sut_imu_batch_t *batch)
+void imu_task_create(void)
 {
-    sys_mode_sut_imu_batch_put(batch);
-    if (s_handle != NULL) {
-        xTaskNotify(s_handle, NOTIFY_SUT_BATCH, eSetBits);
-    }
+    s_snapshot_q = xQueueCreate(1, sizeof(imu_snapshot_t));
+
+    static const osThreadAttr_t attr = {
+        .name       = "IMU",
+        .stack_size = 512 * 4,
+        .priority   = osPriorityHigh,
+    };
+    osThreadNew(imu_task, NULL, &attr);
+}
+
+bool imu_snapshot_peek(imu_snapshot_t *out)
+{
+    return xQueuePeek(s_snapshot_q, out, 0) == pdTRUE;
 }
 
 /* ── HAL callbacks (ISR context) ── */

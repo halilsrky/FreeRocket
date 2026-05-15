@@ -5,6 +5,7 @@
 #include "telemetry_task.h"
 #include "gnss_task.h"
 #include "cmd_task.h"
+#include "sut_task.h"
 #include "sys_mode.h"
 #include "cmsis_os.h"
 #include "SEGGER_SYSVIEW.h"
@@ -15,6 +16,7 @@ void Application_Start(void)
 
     sys_mode_init();
 
+    sut_task_create();      /* queue oluşturulur — cmd_task'tan önce */
     imu_task_create();
     baro_task_create();
     gnss_task_create();
