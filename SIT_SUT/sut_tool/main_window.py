@@ -4,6 +4,7 @@ SIT / SUT mod geçişi, seri bağlantı, grafik ve roket yönelimi.
 """
 import csv
 import os
+import time
 from collections import deque
 from datetime import datetime
 
@@ -443,6 +444,7 @@ class MainWindow(QMainWindow):
 
     def _on_start(self):
         self._results.clear()
+        self._sit_start_time: float | None = None
         self.rocket.reset()
         self.btn_start.setEnabled(False)
         self.btn_stop.setEnabled(True)
@@ -486,11 +488,17 @@ class MainWindow(QMainWindow):
     # ── SIT callbacks ─────────────────────────────────────────────────────────
     def _on_sit_packet(self, alt, pressure, ax, ay, az,
                        pitch, roll, yaw, gps_alt, lat, lon, vel, status):
+        now = time.monotonic()
+        if self._sit_start_time is None:
+            self._sit_start_time = now
+        elapsed = round(now - self._sit_start_time, 3)
+
         self._sit_view.update_packet(alt, pressure, ax, ay, az,
                                      pitch, roll, yaw, gps_alt, lat, lon, vel, status)
         self.rocket.set_orientation(roll, pitch, yaw)
         phase = status_to_phase(status)
         self._results.append(dict(
+            time=elapsed,
             alt=alt, pressure=pressure,
             ax=ax, ay=ay, az=az,
             pitch=pitch, roll=roll, yaw=yaw,
@@ -533,7 +541,7 @@ class MainWindow(QMainWindow):
 
         if self._mode == self._MODE_SIT:
             path = os.path.join("logs", f"SIT_log_{ts}.csv")
-            fields = ["alt", "pressure", "ax", "ay", "az",
+            fields = ["time", "alt", "pressure", "ax", "ay", "az",
                       "pitch", "roll", "yaw", "gps_alt", "lat", "lon",
                       "vel", "status", "phase"]
         else:
@@ -557,4 +565,5 @@ class MainWindow(QMainWindow):
         self.btn_start.setEnabled(ok)
 
     def _log(self, msg: str):
-        self.log_box.appendPlainText(msg)
+        ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        self.log_box.appendPlainText(f"[{ts}] {msg}")
