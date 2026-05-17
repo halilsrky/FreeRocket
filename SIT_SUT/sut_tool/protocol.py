@@ -1,6 +1,12 @@
 """
-SUT protokol sabitleri, paket encode/decode, CSV yükleme ve pencere gruplama.
+Protokol sabitleri, paket encode/decode, CSV yükleme ve pencere gruplama.
 Qt bağımlılığı yok — test edilebilir saf Python.
+
+SIT_TELEMETRY (STM32 → PC, 54 byte):
+  0xAB | alt(4) | press(4) | ax(4) | ay(4) | az(4)
+       | pitch(4) | roll(4) | yaw(4)
+       | gps_alt(4) | lat(4) | lon(4) | vel(4)
+       | status_hi | status_lo | chk | 0x0D 0x0A
 
 SUT_COMBINED (PC → STM32):
   0xAD | count(1) | count×[sim_t(4)+gx(4)+gy(4)+gz(4)]
@@ -17,8 +23,15 @@ import struct
 import csv
 
 # ── Komut paketleri (PC → STM32, 5 byte) ──────────────────────────────────
+SIT_CMD  = bytes([0xAA, 0x20, 0xCA, 0x0D, 0x0A])
 SUT_CMD  = bytes([0xAA, 0x22, 0xCC, 0x0D, 0x0A])
 STOP_CMD = bytes([0xAA, 0x24, 0xCE, 0x0D, 0x0A])
+
+# ── SIT_TELEMETRY ──────────────────────────────────────────────────────────
+SIT_HEADER      = 0xAB
+SIT_PACKET_SIZE = 54       # sabit
+SIT_CHKSUM_SPAN = 51       # [0..50] dahil
+SIT_FIELD_COUNT = 12       # float sayısı
 
 # ── SUT_COMBINED ───────────────────────────────────────────────────────────
 COMBINED_HEADER  = 0xAD
@@ -174,6 +187,55 @@ def parse_response(data: bytes) -> dict | None:
         yaw      = struct.unpack_from('>f', data, 17)[0],
         status   = (data[21] << 8) | data[22],
     )
+
+
+# ── SIT parse ─────────────────────────────────────────────────────────────
+def parse_sit_packet(data: bytes) -> dict | None:
+    """54-byte SIT_TELEMETRY paketini çözer. Geçersizse None döner."""
+    if len(data) < SIT_PACKET_SIZE:
+        return None
+    if data[0] != SIT_HEADER:
+        return None
+    if data[52] != 0x0D or data[53] != 0x0A:
+        return None
+    chk = sum(data[:SIT_CHKSUM_SPAN]) % 256
+    if chk != data[51]:
+        return None
+    fields = struct.unpack_from('>12f', data, 1)
+    return dict(
+        alt      = fields[0],
+        pressure = fields[1],
+        ax       = fields[2],
+        ay       = fields[3],
+        az       = fields[4],
+        pitch    = fields[5],
+        roll     = fields[6],
+        yaw      = fields[7],
+        gps_alt  = fields[8],
+        lat      = fields[9],
+        lon      = fields[10],
+        vel      = fields[11],
+        status   = (data[49] << 8) | data[50],
+    )
+
+
+def extract_sit_packet(buf: bytearray) -> dict | None:
+    """Buffer içinden ilk geçerli SIT paketini çıkarır; bulunan paket silinir."""
+    while len(buf) >= SIT_PACKET_SIZE:
+        idx = buf.find(SIT_HEADER)
+        if idx == -1:
+            buf.clear()
+            return None
+        if idx > 0:
+            del buf[:idx]
+        if len(buf) < SIT_PACKET_SIZE:
+            return None
+        pkt = parse_sit_packet(bytes(buf[:SIT_PACKET_SIZE]))
+        if pkt is not None:
+            del buf[:SIT_PACKET_SIZE]
+            return pkt
+        del buf[:1]
+    return None
 
 
 def extract_response(buf: bytearray) -> dict | None:
