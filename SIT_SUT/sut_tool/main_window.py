@@ -7,6 +7,11 @@ Sağ panel (kare):  3D roket yönelim görselleştirmesi
 """
 import csv
 import os
+<<<<<<< HEAD
+=======
+import time
+from collections import deque
+>>>>>>> 2c7440e (SIT loguna time eklendi)
 from datetime import datetime
 
 import serial.tools.list_ports
@@ -224,7 +229,11 @@ class MainWindow(QMainWindow):
             self._log("Önce CSV dosyası seç.")
             return
         self._results.clear()
+<<<<<<< HEAD
         self.plot.reset()
+=======
+        self._sit_start_time: float | None = None
+>>>>>>> 2c7440e (SIT loguna time eklendi)
         self.rocket.reset()
         self.progress.setValue(0)
         self.btn_start.setEnabled(False)
@@ -251,8 +260,33 @@ class MainWindow(QMainWindow):
         self.btn_start.setEnabled(True)
         self.btn_stop.setEnabled(False)
 
+<<<<<<< HEAD
     def _on_sent(self, sim_time: float, alt: float):
         self.plot.append_sent(sim_time, alt)
+=======
+    # ── SIT callbacks ─────────────────────────────────────────────────────────
+    def _on_sit_packet(self, alt, pressure, ax, ay, az,
+                       pitch, roll, yaw, gps_alt, lat, lon, vel, status):
+        now = time.monotonic()
+        if self._sit_start_time is None:
+            self._sit_start_time = now
+        elapsed = round(now - self._sit_start_time, 3)
+
+        self._sit_view.update_packet(alt, pressure, ax, ay, az,
+                                     pitch, roll, yaw, gps_alt, lat, lon, vel, status)
+        self.rocket.set_orientation(roll, pitch, yaw)
+        phase = status_to_phase(status)
+        self._results.append(dict(
+            time=elapsed,
+            alt=alt, pressure=pressure,
+            ax=ax, ay=ay, az=az,
+            pitch=pitch, roll=roll, yaw=yaw,
+            gps_alt=gps_alt, lat=lat, lon=lon,
+            vel=vel, status=status, phase=phase,
+        ))
+        if len(self._results) == 1:
+            self.btn_save.setEnabled(True)
+>>>>>>> 2c7440e (SIT loguna time eklendi)
 
     def _on_result(self, sim_time: float, alt: float,
                    roll: float, pitch: float, yaw: float,
@@ -277,6 +311,19 @@ class MainWindow(QMainWindow):
         ts   = datetime.now().strftime("%Y%m%d_%H%M%S")
         path = os.path.join("logs", f"SUT_result_{ts}.csv")
         os.makedirs("logs", exist_ok=True)
+<<<<<<< HEAD
+=======
+
+        if self._mode == self._MODE_SIT:
+            path = os.path.join("logs", f"SIT_log_{ts}.csv")
+            fields = ["time", "alt", "pressure", "ax", "ay", "az",
+                      "pitch", "roll", "yaw", "gps_alt", "lat", "lon",
+                      "vel", "status", "phase"]
+        else:
+            path = os.path.join("logs", f"SUT_result_{ts}.csv")
+            fields = ["sim_time", "alt", "roll", "pitch", "yaw", "status", "phase"]
+
+>>>>>>> 2c7440e (SIT loguna time eklendi)
         with open(path, "w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(
                 f, fieldnames=["sim_time", "alt", "roll", "pitch", "yaw",
@@ -295,6 +342,7 @@ class MainWindow(QMainWindow):
         self.btn_start.setEnabled(ok)
 
     def _log(self, msg: str):
+<<<<<<< HEAD
         self.log_box.appendPlainText(msg)
 
     @staticmethod
@@ -313,3 +361,7 @@ class MainWindow(QMainWindow):
             f"QPushButton:hover{{background:{hover};}}"
             f"QPushButton:disabled{{background:#333; color:#666;}}"
         )
+=======
+        ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        self.log_box.appendPlainText(f"[{ts}] {msg}")
+>>>>>>> 2c7440e (SIT loguna time eklendi)
