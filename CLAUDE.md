@@ -152,10 +152,27 @@ JTAG/canlı bağlantı olmadan çalışır. Sistem çalışırken olaylar RAM'de
 * ~~Veri tutarsızlığı~~ — `xQueueOverwrite` ile atomik snapshot.
 * ~~Stack güvenliği yok~~ — `configCHECK_FOR_STACK_OVERFLOW 2` + hook aktif.
 * ~~Boot sırasında interrupt açmak~~ — IRQ'lar handle set edildikten sonra açılıyor.
+* ~~IWDG yok~~ — `iwdg.c` modülü eklendi; prescaler/256, reload 249 → ~2 s timeout; `baro_task` her 100 ms besliyor.
+* ~~Fatal handler infinite loop~~ — `Error_Handler()` artık `NVIC_SystemReset()` çağırıyor.
+* ~~`bmi088_init` hatası sessiz ignore~~ — Init başarısız olursa IRQ açılmadan task silinir; `imu_snapshot_peek` hep `false` döner; `flight_sm` baro-only modda devam eder.
+* ~~flight_sm IMU olmadan BOOST'a geçemiyor~~ — `LAUNCH_VEL_THR 15 m/s` eklendi; IMU yoksa baro Kalman hızı ile BOOST tespiti yapılıyor.
+
+### Baro-only degraded mod (kasıtlı davranış)
+IMU başlamazsa sistem tam fonksiyonlu değil ama uçabilir durumda:
+
+| Özellik | IMU var | IMU yok |
+| ------- | ------- | ------- |
+| BOOST tespiti | IMU ivmesi > 45 m/s² | Baro hızı > 15 m/s |
+| Kalman ivme girdisi | `accel_vertical(imu)` | 0 (daha gürültülü) |
+| Tilt-based apogee | Aktif | Pasif (`imu==NULL` koruması) |
+| Hız-bazlı apogee | Aktif | Aktif |
+| BURNOUT/COAST/DROGUE/MAIN | Aktif | Aktif |
 
 ### Hâlâ açık
-* **IWDG yok** — kilitlenme durumunda sistem reset alamıyor.
-* **Fatal handler infinite loop** — `Error_Handler()` reset yerine loop yapıyor (bilinçli bırakıldı, geliştirme aşamasında debug kolaylığı için).
+
+#### Uçuşu engelleyen (uçmadan önce şart)
+
+#### Kod kalitesi / güvenilirlik
 * **Gyro kalibrasyonu yok** — Mahony bias hatası ile başlıyor.
 
 ## Kod yazma kuralları
