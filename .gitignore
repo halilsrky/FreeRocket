@@ -4,6 +4,7 @@ Debug/
 Release/
 Cube/build
 temp/
+logs/
 
 # Compiler / linker artefactları
 *.o
