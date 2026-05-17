@@ -230,10 +230,10 @@ Detaylı model bilgisi → `mlmodel.md`
 * ~~Veri tutarsızlığı~~ — `xQueueOverwrite` ile atomik snapshot.
 * ~~Stack güvenliği yok~~ — `configCHECK_FOR_STACK_OVERFLOW 2` + hook aktif.
 * ~~Boot sırasında interrupt açmak~~ — IRQ'lar handle set edildikten sonra açılıyor.
+* ~~IWDG yok~~ — `iwdg.c` modülü eklendi; prescaler/256, reload 249 → ~2 s timeout; `baro_task` her 100 ms besliyor.
+* ~~Fatal handler infinite loop~~ — `Error_Handler()` artık `NVIC_SystemReset()` çağırıyor.
 
 ### Hâlâ açık
-* **IWDG yok** — kilitlenme durumunda sistem reset alamıyor.
-* **Fatal handler infinite loop** — `Error_Handler()` reset yerine loop yapıyor (bilinçli bırakıldı, geliştirme aşamasında debug kolaylığı için).
 * **Gyro kalibrasyonu yok** — Mahony bias hatası ile başlıyor.
 
 ## Kod yazma kuralları

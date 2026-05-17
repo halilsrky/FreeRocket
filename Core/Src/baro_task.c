@@ -1,4 +1,5 @@
 #include "baro_task.h"
+#include "iwdg.h"
 #include "baro_snapshot.h"
 #include "alt_snapshot.h"
 #include "alt_kalman.h"
@@ -134,5 +135,7 @@ static void baro_task(void *arg)
         xQueueOverwrite(s_alt_q, &alt_snap);
 
         flight_sm_update(&alt_snap, imu_ptr);
+
+        iwdg_feed();
     }
 }
