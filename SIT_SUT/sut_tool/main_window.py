@@ -87,10 +87,10 @@ class _SitView(QWidget):
 
         def _row(key: str, label: str, r: int, col: int):
             lbl = QLabel(label)
-            lbl.setStyleSheet(f"color:{_DIM}; font-size:13px;")
+            lbl.setStyleSheet(f"color:{_DIM}; font-size:15px;")
             val = QLabel("—")
             val.setStyleSheet(
-                f"color:{_TEXT}; font-size:15px; "
+                f"color:{_TEXT}; font-size:18px; "
                 f"font-family:Consolas,monospace; font-weight:bold;"
             )
             val.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
