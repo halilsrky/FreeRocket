@@ -12,43 +12,46 @@
 #include <stdint.h>
 
 /*
- * Binary telemetry frame — 54 bytes.
+ * Binary telemetry frame — 66 bytes.
  *
  * Tüm floatlar big-endian.
  *
  * Python decoder:
  *   import struct
- *   magic, alt, press, ax, ay, az, pitch, roll, yaw, gps_alt, lat, lon, vel = \
- *       struct.unpack('>Bffffffffff', data[:49])
- *   status = (data[49] << 8) | data[50]
- *   csum, cr, lf = data[51], data[52], data[53]
+ *   alt, press, ax, ay, az, pitch, roll, yaw, gx, gy, gz, gps_alt, lat, lon, vel = \
+ *       struct.unpack_from('>15f', data, 1)
+ *   status = (data[61] << 8) | data[62]
+ *   csum, cr, lf = data[63], data[64], data[65]
  *
  * Offset map:
  *   [0]      0xAB magic
- *   [1-4]    Kalman altitude AGL (m,   float BE)
- *   [5-8]    pressure          (hPa, float BE)
- *   [9-12]   accel X      (m/s², float BE)
- *   [13-16]  accel Y      (m/s², float BE)
- *   [17-20]  -accel Z     (m/s², float BE, negated)
- *   [21-24]  pitch        (°,   float BE)
- *   [25-28]  roll         (°,   float BE)
- *   [29-32]  yaw          (°,   float BE)
- *   [33-36]  GPS altitude (m,   float BE)
- *   [37-40]  GPS latitude (°,   float BE)
- *   [41-44]  GPS longitude(°,   float BE)
- *   [45-48]  velocity     (m/s, float BE, Kalman)
- *   [49]     status_bits  high byte (FSM_BIT_* flags)
- *   [50]     status_bits  low byte
- *   [51]     checksum     (additive sum of [0..50] mod 256)
- *   [52]     0x0D
- *   [53]     0x0A
+ *   [1-4]    Kalman altitude AGL (m,     float BE)
+ *   [5-8]    pressure            (hPa,   float BE)
+ *   [9-12]   accel X             (m/s²,  float BE)
+ *   [13-16]  accel Y             (m/s²,  float BE)
+ *   [17-20]  -accel Z            (m/s²,  float BE, negated)
+ *   [21-24]  pitch               (°,     float BE)
+ *   [25-28]  roll                (°,     float BE)
+ *   [29-32]  yaw                 (°,     float BE)
+ *   [33-36]  gyro X              (rad/s, float BE)
+ *   [37-40]  gyro Y              (rad/s, float BE)
+ *   [41-44]  gyro Z              (rad/s, float BE)
+ *   [45-48]  GPS altitude        (m,     float BE)
+ *   [49-52]  GPS latitude        (°,     float BE)
+ *   [53-56]  GPS longitude       (°,     float BE)
+ *   [57-60]  velocity            (m/s,   float BE, Kalman)
+ *   [61]     status_bits  high byte (FSM_BIT_* flags)
+ *   [62]     status_bits  low byte
+ *   [63]     checksum     (additive sum of [0..62] mod 256)
+ *   [64]     0x0D
+ *   [65]     0x0A
  */
 
 #define TELEM_RATE_HZ   50U
 #define TELEM_PERIOD_MS (1000U / TELEM_RATE_HZ)
 
-#define FRAME_LEN       54U
-#define CHKSUM_SPAN     51U   /* bytes [0..50] dahil */
+#define FRAME_LEN       66U
+#define CHKSUM_SPAN     63U   /* bytes [0..62] dahil */
 
 typedef union {
     float   f;
@@ -118,18 +121,23 @@ static void telem_task(void *arg)
         put_float_be(&s_frame[25], have_imu ?  imu.euler.roll  : 0.0f);
         put_float_be(&s_frame[29], have_imu ?  imu.euler.yaw   : 0.0f);
 
-        /* [33-48] big-endian floats */
-        put_float_be(&s_frame[33], have_gnss ? gnss.altitude  : 0.0f);
-        put_float_be(&s_frame[37], have_gnss ? gnss.latitude  : 0.0f);
-        put_float_be(&s_frame[41], have_gnss ? gnss.longitude : 0.0f);
-        put_float_be(&s_frame[45], have_alt  ? alt.velocity   : 0.0f);
+        /* [33-44] gyro */
+        put_float_be(&s_frame[33], have_imu ? imu.gyro.x : 0.0f);
+        put_float_be(&s_frame[37], have_imu ? imu.gyro.y : 0.0f);
+        put_float_be(&s_frame[41], have_imu ? imu.gyro.z : 0.0f);
 
-        s_frame[49] = (flight.status >> 8) & 0xFF;
-        s_frame[50] =  flight.status       & 0xFF;
+        /* [45-60] GPS + velocity */
+        put_float_be(&s_frame[45], have_gnss ? gnss.altitude  : 0.0f);
+        put_float_be(&s_frame[49], have_gnss ? gnss.latitude  : 0.0f);
+        put_float_be(&s_frame[53], have_gnss ? gnss.longitude : 0.0f);
+        put_float_be(&s_frame[57], have_alt  ? alt.velocity   : 0.0f);
 
-        s_frame[51] = checksum(s_frame, CHKSUM_SPAN);
-        s_frame[52] = 0x0D;
-        s_frame[53] = 0x0A;
+        s_frame[61] = (flight.status >> 8) & 0xFF;
+        s_frame[62] =  flight.status       & 0xFF;
+
+        s_frame[63] = checksum(s_frame, CHKSUM_SPAN);
+        s_frame[64] = 0x0D;
+        s_frame[65] = 0x0A;
 
         HAL_UART_Transmit_DMA(&huart2, s_frame, FRAME_LEN);
     }

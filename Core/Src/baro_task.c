@@ -85,6 +85,7 @@ static void baro_task(void *arg)
     for (;;) {
         /* SUT modunda baro okuma yapılmaz — sut_task kendi Kalman'ını çalıştırır */
         if (sys_mode_get() == MODE_SUT) {
+            iwdg_feed();
             wake_tick = xTaskGetTickCount();  /* catch-up engellemek için sıfırla */
             vTaskDelay(pdMS_TO_TICKS(200U));
             continue;

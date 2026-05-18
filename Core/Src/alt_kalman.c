@@ -34,9 +34,9 @@ void alt_kalman_init(alt_kalman_t *kf)
     kf->P[1][1] = 0.1f;
     kf->P[2][2] = 1.0f;
 
-    kf->q     = 0.1f;   /* process noise — increase if filter lags */
-    kf->r_alt = 5.0f;   /* baro noise variance   (~1 m std dev)    */
-    kf->r_acc = 10.0f;  /* accel noise variance — daha büyük = baroya daha çok güven */
+    kf->q     = 100000.0f; /* process noise — çok büyük: predict P'yi şişirir, gain ~1 → baro'ya tam güven */
+    kf->r_alt = 0.25f;    /* baro noise variance (~0.5 m std dev) */
+    kf->r_acc = 500000.0f; /* accel noise variance — büyük = ivme ignore */
 }
 
 float alt_kalman_update(alt_kalman_t *kf, float alt_rel, float accel_vert, float dt)

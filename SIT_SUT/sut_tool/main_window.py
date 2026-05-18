@@ -108,12 +108,12 @@ class _SitView(QWidget):
         _row("lon",      "Boylam (°)",         5, 0)
 
         # Sağ sütun
-        _row("ax",    "İvme X (m/s²)",  0, 3)
-        _row("ay",    "İvme Y (m/s²)",  1, 3)
-        _row("az",    "İvme Z (m/s²)",  2, 3)
-        _row("pitch", "Pitch (°)",      3, 3)
-        _row("roll",  "Roll  (°)",      4, 3)
-        _row("yaw",   "Yaw   (°)",      5, 3)
+        _row("ax",     "İvme X (m/s²)",   0, 3)
+        _row("ay",     "İvme Y (m/s²)",   1, 3)
+        _row("az",     "İvme Z (m/s²)",   2, 3)
+        _row("gyro_x", "Gyro X (rad/s)",  3, 3)
+        _row("gyro_y", "Gyro Y (rad/s)",  4, 3)
+        _row("gyro_z", "Gyro Z (rad/s)",  5, 3)
 
         vl.addWidget(grp)
 
@@ -123,17 +123,19 @@ class _SitView(QWidget):
         pw.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         p = pw.addPlot(title="Altitude AGL — Canlı")
         p.setLabel('left', 'm')
-        p.setLabel('bottom', 'Paket #')
+        p.setLabel('bottom', 'Zaman (s)')
         p.showGrid(x=True, y=True, alpha=0.3)
         p.getAxis('left').setTextPen(_TEXT)
         p.getAxis('bottom').setTextPen(_TEXT)
         self._curve = p.plot(pen=pg.mkPen(color=_ACCENT, width=2))
         vl.addWidget(pw, 1)
 
+        self._t_buf:   deque[float] = deque(maxlen=600)
         self._alt_buf: deque[float] = deque(maxlen=600)
 
     def update_packet(self, alt, pressure, ax, ay, az,
-                      pitch, roll, yaw, gps_alt, lat, lon, vel, _status):
+                      gps_alt, lat, lon, vel,
+                      gyro_x, gyro_y, gyro_z, _status, elapsed: float):
         self._vals["alt"].setText(f"{alt:.2f}")
         self._vals["vel"].setText(f"{vel:.2f}")
         self._vals["pressure"].setText(f"{pressure:.2f}")
@@ -143,15 +145,16 @@ class _SitView(QWidget):
         self._vals["ax"].setText(f"{ax:.3f}")
         self._vals["ay"].setText(f"{ay:.3f}")
         self._vals["az"].setText(f"{az:.3f}")
-        self._vals["pitch"].setText(f"{pitch:.2f}")
-        self._vals["roll"].setText(f"{roll:.2f}")
-        self._vals["yaw"].setText(f"{yaw:.2f}")
+        self._vals["gyro_x"].setText(f"{gyro_x:.4f}")
+        self._vals["gyro_y"].setText(f"{gyro_y:.4f}")
+        self._vals["gyro_z"].setText(f"{gyro_z:.4f}")
 
+        self._t_buf.append(elapsed)
         self._alt_buf.append(alt)
-        buf = list(self._alt_buf)
-        self._curve.setData(range(len(buf)), buf)
+        self._curve.setData(list(self._t_buf), list(self._alt_buf))
 
     def reset(self):
+        self._t_buf.clear()
         self._alt_buf.clear()
         self._curve.setData([], [])
         for v in self._vals.values():
@@ -487,21 +490,23 @@ class MainWindow(QMainWindow):
 
     # ── SIT callbacks ─────────────────────────────────────────────────────────
     def _on_sit_packet(self, alt, pressure, ax, ay, az,
-                       pitch, roll, yaw, gps_alt, lat, lon, vel, status):
+                       pitch, roll, yaw, gps_alt, lat, lon, vel, status,
+                       gyro_x, gyro_y, gyro_z):
         now = time.monotonic()
         if self._sit_start_time is None:
             self._sit_start_time = now
         elapsed = round(now - self._sit_start_time, 3)
 
         self._sit_view.update_packet(alt, pressure, ax, ay, az,
-                                     pitch, roll, yaw, gps_alt, lat, lon, vel, status)
+                                     gps_alt, lat, lon, vel,
+                                     gyro_x, gyro_y, gyro_z, status, elapsed)
         self.rocket.set_orientation(roll, pitch, yaw)
         phase = status_to_phase(status)
         self._results.append(dict(
             time=elapsed,
             alt=alt, pressure=pressure,
             ax=ax, ay=ay, az=az,
-            pitch=pitch, roll=roll, yaw=yaw,
+            gyro_x=gyro_x, gyro_y=gyro_y, gyro_z=gyro_z,
             gps_alt=gps_alt, lat=lat, lon=lon,
             vel=vel, status=status, phase=phase,
         ))
@@ -542,7 +547,7 @@ class MainWindow(QMainWindow):
         if self._mode == self._MODE_SIT:
             path = os.path.join("logs", f"SIT_log_{ts}.csv")
             fields = ["time", "alt", "pressure", "ax", "ay", "az",
-                      "pitch", "roll", "yaw", "gps_alt", "lat", "lon",
+                      "gyro_x", "gyro_y", "gyro_z", "gps_alt", "lat", "lon",
                       "vel", "status", "phase"]
         else:
             path = os.path.join("logs", f"SUT_result_{ts}.csv")

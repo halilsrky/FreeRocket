@@ -1,0 +1,25 @@
+\clearpage
+
+\section{BÖLÜM: GİRİŞ}
+\label{bolum1}
+
+\subsection{AMAÇ}
+\label{amac}
+
+Bu çalışmanın temel amacı, model roket aviyonik sistemlerinde yaşanan görev karmaşıklığı problemini çözmek üzere güvenilir, deterministik ve test edilebilir bir uçuş bilgisayarı yazılım mimarisi geliştirmektir. Fırlatma, rampa ayrılışı, ivmelenme (boost), serbest uçuş (coast), tepe noktası (apogee) ve kurtarma fonksiyonlarının (paraşüt açılışı) milisaniyeler hassasiyetinde yönetilmesi gereken model roket uygulamalarında, sistemin \textit{hard real-time} (katı gerçek zamanlı) kısıtları sağlaması hayati önem taşımaktadır. 
+
+Çalışmanın temel hedefleri kapsamında; STM32F446 mikrodenetleyicisi üzerinde donanım sürücülerinin (DMA ve kesme mimarisi ile) entegre edilmesi, farklı sensör verilerinin (BMI088, BME280 ve GNSS) yüksek başarımla harmanlanması (sensör füzyonu), 7 fazlı durum makinesi (uçuş algoritması) tabanlı modelin geliştirilmesi ve Döngüde İşlemci (Processor-in-the-Loop - PIL) test zinciri ile sistem doğrulamasının yapılması amaçlanmıştır. 
+
+Birinci aşama (Bitirme Projesi I) raporundan bu yana, yalnızca bir temel altyapı oluşturulması hedefinden öteye geçilmiş ve doğrudan uçuşa yönelik kritik yazılım modülleri projeye entegre edilmiştir. Bu bağlamda, BME280 barometrik basınç sensörü sürücüsü DMA tabanlı olarak uygulamaya alınmış, irtifa tahmini için Baro-IMU verilerini kullanan \textit{alt\_kalman} filtresi geliştirilmiş, L86 modülü için NMEA çözümleyici barındıran \textit{gnss\_task} oluşturulmuştur. Ayrıca uçuş senaryolarının geçişlerini kontrol eden \textit{flight\_sm} (uçuş durum makinesi) mekanizması ile sistemsel arızalara karşı donanımsal Watchdog Timer (IWDG) yapıları dahil edilmiştir. Geliştirilen bu sistemin güvenilirliğini ve operasyonel işlevselliğini kanıtlamak için SIT (System-in-the-Loop) ve SUT (System Under Test) modları üzerinden RocketPy tabanlı test doğrulama süreçlerinin işletilmesi hedeflenmiştir.
+
+\subsection{GİRİŞ}
+\label{giris}
+
+Model roket sistemleri, artan uçuş yüksekliği beklentileri, daha hassas telemetri gereksinimleri ve karmaşık kurtarma algoritmaları doğrultusunda, mekanik yapıları kadar sofistike yazılım mimarilerine de ihtiyaç duymaktadır. Uçuş dinamiklerinin gerektirdiği çevresel koşullar altındayken, saniyede yüzlerce kez gerçekleştirilmesi gereken sensör okuma, durum tahmini filtrelemesi ve karar üretme süreçlerinin belirli zaman kısıtları içerisinde (deadline) tamamlanamaması, yanlış bir tepe noktası tespitine veya paraşüt sisteminde ölümcül gecikmelere yol açabilmektedir.
+
+Geleneksel gömülü sistem yaklaşımlarından olan \textit{bare-metal} (çıplak donanım) tasarımlar, basit görevlerde başarılı sonuçlar verse de; farklı periyotlara sahip görevlerin senkronizasyonu sırasında tıkanıklıklara (blocking) ve dolayısıyla zamanlama kayıplarına neden olmaktadır. Bu tür mimarilerde yazılımın ölçeklenebilirliği ve bakım kolaylığı da epey sınırlıdır. Öte yandan, Linux veya benzeri genel amaçlı işletim sistemleri, sağladıkları yüksek yazılımsal esnekliğe rağmen çekirdek (kernel) seviyesindeki determinizm eksikliği nedeniyle \textit{jitter} (zamanlama sapması) oluşturabilmekte ve gömülü kritik aviyonik yazılımları için güvenlik riskleri barındırmaktadır. 
+
+Bu noktada gerçek zamanlı işletim sistemleri (RTOS), görev önceliklendirme, zamanlama garantileri, \textit{preemption} (görev kesintisi) kabiliyeti ve katı izolasyon özellikleri sayesinde model roket uçuş bilgisayarları için en uygun alternatifi sunmaktadır \cite{liu1973scheduling}. Bu çalışmada, STM32F446 mimarisi üzerinde FreeRTOS tabanlı bir işletim sistemi inşa edilmiştir. Sensörlerden elde edilecek veriler, işlemleri geciktirmemesi adına, doğrudan bellek erişimi (DMA) ve donanımsal kesme yöntemleriyle alınmaktadır. Uygulanan bu asenkron veri toplama yöntemi, veri okuma ve değerlendirme esnasında harcanan \textit{işlemci döngüsünü} düşürmekle kalmayıp aynı zamanda diğer önemli alt rutinlerin kesintisiz çalışabilmesi adına gerçek zamanlı bir çerçeve oluşturur \cite{freertos_tasks}.
+
+Raporun ilerleyen kısımlarında öncelikle model roketlerde karşılaşılan zamanlama gereksinimleri ve FreeRTOS ekseninde uygulanan gerçek zamanlı işletim sistemi özellikleri üzerinden sensör füzyonu literatürü tartışılacaktır (Bölüm 2). Ardından oluşturulan uçuş sistemi mimarisi (Bölüm 3) detaylandırılacak olup, değerlendirmeler ile sistemin doğrulanması raporun son kısmını oluşturacaktır.
+\clearpage

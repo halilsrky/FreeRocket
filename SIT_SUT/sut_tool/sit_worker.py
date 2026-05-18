@@ -12,10 +12,11 @@ from protocol import SIT_CMD, STOP_CMD, extract_sit_packet
 
 
 class SitWorker(QThread):
-    # alt, pressure, ax, ay, az, pitch, roll, yaw, gps_alt, lat, lon, vel, status
+    # alt, pressure, ax, ay, az, pitch, roll, yaw, gps_alt, lat, lon, vel, status, gyro_x, gyro_y, gyro_z
     packet_ready = pyqtSignal(float, float, float, float, float,
                                float, float, float, float, float,
-                               float, float, int)
+                               float, float, int,
+                               float, float, float)
 
     log      = pyqtSignal(str)
     finished = pyqtSignal(int)   # toplam paket sayısı
@@ -64,6 +65,7 @@ class SitWorker(QThread):
                         pkt['pitch'],    pkt['roll'],    pkt['yaw'],
                         pkt['gps_alt'],  pkt['lat'],     pkt['lon'],
                         pkt['vel'],      pkt['status'],
+                        pkt['gyro_x'],   pkt['gyro_y'],  pkt['gyro_z'],
                     )
                 else:
                     time.sleep(self._READ_POLL_S)

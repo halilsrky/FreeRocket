@@ -2,9 +2,10 @@
 Protokol sabitleri, paket encode/decode, CSV yükleme ve pencere gruplama.
 Qt bağımlılığı yok — test edilebilir saf Python.
 
-SIT_TELEMETRY (STM32 → PC, 54 byte):
+SIT_TELEMETRY (STM32 → PC, 66 byte):
   0xAB | alt(4) | press(4) | ax(4) | ay(4) | az(4)
        | pitch(4) | roll(4) | yaw(4)
+       | gx(4) | gy(4) | gz(4)
        | gps_alt(4) | lat(4) | lon(4) | vel(4)
        | status_hi | status_lo | chk | 0x0D 0x0A
 
@@ -29,9 +30,9 @@ STOP_CMD = bytes([0xAA, 0x24, 0xCE, 0x0D, 0x0A])
 
 # ── SIT_TELEMETRY ──────────────────────────────────────────────────────────
 SIT_HEADER      = 0xAB
-SIT_PACKET_SIZE = 54       # sabit
-SIT_CHKSUM_SPAN = 51       # [0..50] dahil
-SIT_FIELD_COUNT = 12       # float sayısı
+SIT_PACKET_SIZE = 66       # sabit
+SIT_CHKSUM_SPAN = 63       # [0..62] dahil
+SIT_FIELD_COUNT = 15       # float sayısı
 
 # ── SUT_COMBINED ───────────────────────────────────────────────────────────
 COMBINED_HEADER  = 0xAD
@@ -191,17 +192,17 @@ def parse_response(data: bytes) -> dict | None:
 
 # ── SIT parse ─────────────────────────────────────────────────────────────
 def parse_sit_packet(data: bytes) -> dict | None:
-    """54-byte SIT_TELEMETRY paketini çözer. Geçersizse None döner."""
+    """66-byte SIT_TELEMETRY paketini çözer. Geçersizse None döner."""
     if len(data) < SIT_PACKET_SIZE:
         return None
     if data[0] != SIT_HEADER:
         return None
-    if data[52] != 0x0D or data[53] != 0x0A:
+    if data[64] != 0x0D or data[65] != 0x0A:
         return None
     chk = sum(data[:SIT_CHKSUM_SPAN]) % 256
-    if chk != data[51]:
+    if chk != data[63]:
         return None
-    fields = struct.unpack_from('>12f', data, 1)
+    fields = struct.unpack_from('>15f', data, 1)
     return dict(
         alt      = fields[0],
         pressure = fields[1],
@@ -211,11 +212,14 @@ def parse_sit_packet(data: bytes) -> dict | None:
         pitch    = fields[5],
         roll     = fields[6],
         yaw      = fields[7],
-        gps_alt  = fields[8],
-        lat      = fields[9],
-        lon      = fields[10],
-        vel      = fields[11],
-        status   = (data[49] << 8) | data[50],
+        gyro_x   = fields[8],
+        gyro_y   = fields[9],
+        gyro_z   = fields[10],
+        gps_alt  = fields[11],
+        lat      = fields[12],
+        lon      = fields[13],
+        vel      = fields[14],
+        status   = (data[61] << 8) | data[62],
     )
 
 

@@ -1,0 +1,65 @@
+\section{BÖLÜM: BULGULAR}
+\label{bolum4}
+
+Bu bölümde, geliştirilen model roket uçuş bilgisayarı aviyonik yazılımının donanımsal ve algoritmik yeterliliğini doğrulamak amacıyla gerçekleştirilen görev performans analizleri, sensör füzyonu testleri ve SUT (Sentetik Uçuş Testi) aşamasından elde edilen bulgular sunulmaktadır.
+
+\subsection{IMU Sensör Füzyonu Sonuçları}
+\label{imu_sensor_fuzyonu_sonuclari}
+
+Sisteme entegre edilen Mahony AHRS (Ataletsel Yönelim ve Referans Sistemi) filtresinin Euler açıları (Roll, Pitch, Yaw) üzerindeki kararlılığını ölçmek adına SIT (Sensör İzleme Testi) arayüzünde uzun süreli durağan testler gerçekleştirilmiştir. Şekil \ref{fig:imu_ilk_saniye} testin bağlandığı ilk saniyedeki 3D yönelim durumunu, Şekil \ref{fig:imu_300_saniye} ise aradan 5 dakika (300 saniye) geçtikten sonraki durumu göstermektedir.
+
+SIT üzerinden elde edilen verilere göre, Mahony füzyon algoritması ve yerçekimi referanslı PI kontrolcüsü sayesinde zaman içerisinde (300 saniye boyunca) \textbf{Roll} ve \textbf{Pitch} açılarında hiçbir oynama veya kayma (drift) gözlemlenmemiştir. İlgili eksenlerde ivmeölçer verisinin tam olarak referans alınabilmesi durumu sabit tutmuştur.
+
+Ancak, tasarlanan sistemde ek bir manyetometre (pusula) bulunmadığı için z-ekseni etrafındaki dönüşleri (Heading/Yaw) mutlak bir referans ile düzeltmek mümkün olmamıştır. Bu durum, sadece jiroskop verisinin entegraline dayanan \textbf{Yaw} açısında zamanla birikimli bir sapmaya (drift) yol açmıştır (Şekil \ref{fig:imu_300_saniye}). Havacılık ve roket uygulamalarında Yaw açısının fırlatma dinamiği boyunca nispeten toleranslı olduğu göz önüne alındığında, Roll ve Pitch kararlılığı algoritmaların apogee (tepe noktası) tespiti (Pitch $> 70^\circ$) için son derece yeterli olduğunu kanıtlamıştır.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{sekiller/IMU_ilk_saniye.png}
+    \caption{SIT Arayüzü Üzerinde IMU Mahony Çıktısı (Testin 1. Saniyesi)}
+    \label{fig:imu_ilk_saniye}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{sekiller/IMU_300_saniye.png}
+    \caption{SIT Arayüzü Üzerinde IMU Mahony Çıktısı (Testin 300. Saniyesi -- Yaw Kayması Gözlemi)}
+    \label{fig:imu_300_saniye}
+\end{figure}
+
+\subsection{Yükseklik Kalman Filtresi Sonuçları}
+\label{yukseklik_kalman_filtresi_sonuclari}
+
+BME280 barometresi doğası gereği çevresel gürültülere ve ölçüm dalgalanmalarına açık bir sensördür. Fırlatma anında oluşabilecek ani basınç düşüşleri tek boyutlu filtrelerde hatalı irtifa değerleri üretebilmektedir. SUT ortamında gerçekleştirilen Processor-in-the-Loop testinde simüle edilen ham barometre verisi ve Kalman filtresi çıkışı grafiğe dökülmüştür. 
+
+Şekil \ref{fig:sut_kalman_purussuz} üzerindeki SUT arayüzü çıktısında, dalgalı formdaki kırmızı cizgi (Ham Barometre İrtifası) ile ona kıyasla yüksek oranda pürüzsüzleştirilmiş ve hatalarından arındırılmış mavi çizgi (Kalman Filtreli İrtifa) arasındaki bariz fark görülmektedir. SUT verisinde görüldüğü üzere 3 durumlu Kalman filtresi gürültüyü baskılamış ve FSM için güvenilir bir hız/irtifa kestirimi sunmuştur.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{sekiller/sut_kalman_pürüssüz.png}
+    \caption{SUT Testi Sırasında Ham Barometre ve Kalman Filtresi Çıktılarının Karşılaştırması}
+    \label{fig:sut_kalman_purussuz}
+\end{figure}
+
+\subsection{SUT Doğrulama Sonuçları ve Uçuş Fazları}
+\label{sut_dogrulama_sonuclari}
+
+Uçuş algoritmalarının RocketPy simülasyonundan beslenen veriyle ne ölçüde tutarlı kararlar aldığı SUT platformu üzerinde incelenmiştir. Testlerin sonucunda sistemin 7-Fazlı uçuş durum makinesinin (FSM), fırlatma komutundan yere inene kadar belirlenen eşik değerlerini hatasız yakaladığı gözlemlenmiştir.
+
+Şekil \ref{fig:sut_tam_ucus} SUT testinin tamamlanmış halini, roketin yönelim ve durum (state) geçişlerini sergilemektedir. Bu bağlamda:
+\begin{itemize}
+    \item \textbf{IDLE $\rightarrow$ BOOST:} RocketPy verisindeki roket motorunun ateşlendiği eşik algılanmış ve sistem "Fırlatma" fazına girmiştir.
+    \item \textbf{BOOST $\rightarrow$ COAST:} İvme grafiğindeki sönümlenme yakalanmış olup motor yanma sonu zamanı (Burnout) başarıyla yakalanmıştır.
+    \item \textbf{COAST $\rightarrow$ APOGEE:} Roketin hızı dikey eksende 0'ın altına indiği ve irtifanın maksimum değere (-tepe noktasına-) ulaştığı o kritik an (Apogee) yakalanmış, sistem otomatik olarak Drogue (ilk paraşüt) komutunu hazırlamıştır. 
+    \item \textbf{APOGEE $\rightarrow$ MAIN ve LANDED:} İrtifa 300 metrenin altına düştüğünde ana paraşüt (Main) başarılı bir şekilde tetiklenmiş ve sıfır irtifa çizgisine ulaşıldığında sönümlenmiş hız profili teyit edilerek LANDED moduna ulaşıldığı kaydedilmiştir.
+\end{itemize}
+
+Bununla birlikte 3D roket yönelimi, SUT paketlerindeki Mahony Euler açılarıyla uyumlu bir serbest düşüş rotası (trajectory) profili çizerken, uçuş durum makinesi deterministik ve kusursuz bir senaryo işletimi gerçekleştirmiştir.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{sekiller/SUT_testi_arayüz.png}
+    \caption{Tamamlanmış SUT Uçuş Testi: FSM Faz Geçişleri ve Yönelim Çıktıları}
+    \label{fig:sut_tam_ucus_testi}
+\end{figure}
+
+\clearpage
