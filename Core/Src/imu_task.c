@@ -44,8 +44,23 @@ static void imu_task(void *arg)
 
     s_handle = xTaskGetCurrentTaskHandle();
 
-    uint8_t init_err = bmi088_init(&k_bmi_cfg);
-    (void)init_err;
+    {
+        int retries = 3;
+        while (bmi088_init(&k_bmi_cfg) != 0) {
+            if (--retries == 0) {
+                vTaskDelete(NULL);
+                return;
+            }
+            /* Bus takılı kalabilir — I2C1'i sıfırla ve yeniden başlat */
+            HAL_I2C_DeInit(&hi2c1);
+            __HAL_RCC_I2C1_FORCE_RESET();
+            vTaskDelay(pdMS_TO_TICKS(10));
+            __HAL_RCC_I2C1_RELEASE_RESET();
+            vTaskDelay(pdMS_TO_TICKS(10));
+            MX_I2C1_Init();
+            vTaskDelay(pdMS_TO_TICKS(30));
+        }
+    }
 
     bmi088_config(&k_bmi_cfg);
 

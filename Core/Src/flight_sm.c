@@ -8,6 +8,7 @@
  * Eşik değerleri
  * ------------------------------------------------------------------------- */
 #define LAUNCH_ACCEL_THR    45.0f   /* m/s²  — toplam IMU ivmesi (yerçekimi dahil) */
+#define LAUNCH_VEL_THR      15.0f   /* m/s   — baro Kalman hızı; IMU yoksa BOOST tespiti */
 #define BURNOUT_AVERT_THR    0.0f   /* m/s²  — Kalman dikey ivmesi < 0 → motor söndü */
 #define BURNOUT_CONFIRM         5   /* örnek — 10 Hz'de 500 ms */
 #define BURNOUT_TIMEOUT_MS   8000   /* ms    — max boost süresi */
@@ -82,13 +83,16 @@ void flight_sm_update(const alt_snapshot_t *alt, const imu_snapshot_t *imu)
      * IDLE: Rampa üzerinde bekliyor.
      * Çıkış: Yüksek IMU ivmesi → BOOST
      * ----------------------------------------------------------------- */
-    case FLIGHT_IDLE:
-        if (imu && total_accel(imu) > LAUNCH_ACCEL_THR) {
+    case FLIGHT_IDLE: {
+        bool launched = (imu  && total_accel(imu) > LAUNCH_ACCEL_THR) ||
+                        (!imu && alt->velocity    > LAUNCH_VEL_THR);
+        if (launched) {
             s_launch_tick = HAL_GetTick();
             s_status |= FSM_BIT_LAUNCHED;
             s_phase = FLIGHT_BOOST;
         }
         break;
+    }
 
     /* -----------------------------------------------------------------
      * BOOST: Motor yanıyor.
