@@ -1,0 +1,38 @@
+\section{BÖLÜM III}
+\label{bolum3}
+
+\subsection{MALZEME VE YÖNTEM}
+\label{malzeme_ve_yontem}
+
+Tezin kullandığı yöntem(ler) hakkında bilgi verilen bölümdür. Her alanda ayrı bir bölüm olarak bulunmaz. Danışman hocanın önerisi ile giriş bölümüne veya farklı bir bölüme dâhil edilebilir. 
+
+Ancak ayrı bir bölüm olması halinde araştırma modeli, evren ve örneklem, veri toplama araçları, analiz yöntemleri, geçerlik ve güvenirlik için yapılan çalışmalar gibi başlık ve bilgilerden oluşması beklenir. 
+
+\subsection{DENKLEM GÖSTERİMİ}
+
+\begin{equation}
+    u(t) = K_i \int_0^t e(\tau) dt
+\end{equation}
+
+Bu integralin eklenmesi, Tip I'in açık döngü ileri yolunu ifade eder. Eğer sistem kararlı durumdaysa, birim adım girişinde sıfır kararlı durum hatasına sahip olması kesin olmalıdır. e (t) için sıfır olmazsa bir süre boyunca, kontrol sinyali büyümeye ve devam etmeyi sürdürür. Böylece, sistemin çıktı durumu artar ve sistemin tepki vermesi beklenir. İntegral terimini, alan hesabı olduğu için önceki verilerin birikimi olarak düşünebiliriz. İntegral kazancın orantılı kazançla ilişkilendirilebilir.
+
+\begin{equation}
+    K_i = \frac{K_p}{\tau_i}
+\end{equation}
+
+\subsection{KOD GÖSTERİMİ}
+
+Kod yazımı örneği (Türkçe karakter kullanmayınız) aşağıdaki gibidir. Burada {\tt lstlisting} ortamı kullanılabilir. 
+
+Yazdığınız kod otomatik olarak dile göre renklendirilecektir.
+
+\begin{lstlisting}
+// hello.java
+
+public class Hello{
+	public void main() {
+		System.out.println("Hello World");
+	}    
+}
+\end{lstlisting}
+\clearpage

@@ -84,8 +84,8 @@ void flight_sm_update(const alt_snapshot_t *alt, const imu_snapshot_t *imu)
      * Çıkış: Yüksek IMU ivmesi → BOOST
      * ----------------------------------------------------------------- */
     case FLIGHT_IDLE: {
-        bool launched = (imu  && total_accel(imu) > LAUNCH_ACCEL_THR) ||
-                        (!imu && alt->velocity    > LAUNCH_VEL_THR);
+        bool launched = (imu && total_accel(imu) > LAUNCH_ACCEL_THR) ||
+                        (alt->velocity > LAUNCH_VEL_THR);
         if (launched) {
             s_launch_tick = HAL_GetTick();
             s_status |= FSM_BIT_LAUNCHED;
