@@ -1,0 +1,135 @@
+% =================================================================
+% BÖLÜM 3 — SENSÖR FÜZYONU VE UÇUŞ ALGORİTMASI
+% =================================================================
+\section{Sensör Füzyonu ve Uçuş Algoritması}
+
+% ---------------------------------------------------------------
+\begin{frame}{IMU Veri İşleme Hattı ve Mahony AHRS}{Yönelim kestirimi (Roll / Pitch / Yaw)}
+  \centering
+  \includegraphics[width=\textwidth,height=0.46\textheight,keepaspectratio]{imu_pipeline.png}
+  \par\vspace{2pt}
+  \begin{columns}[T]
+    \begin{column}{0.36\textwidth}
+      \begin{block}{\tiny Neden füzyon?}
+        \tiny İvmeölçer titreşimde \textbf{gürültülü}; jiroskop zamanla \textbf{kayar}. İkisinin güçlü yönü birleştirilir.
+      \end{block}
+    \end{column}
+    \begin{column}{0.64\textwidth}
+      \begin{exampleblock}{\tiny Mahony AHRS — Nasıl Çalışır?}
+        \tiny
+        \textbf{AHRS} = Attitude \& Heading Ref. System (Roll/Pitch/Yaw)\\[1pt]
+        \textbf{1.} Jiro $\rightarrow$ açısal hız $\rightarrow$ quaternion güncelle\quad
+        \textbf{2.} İvmeölçer $\rightarrow$ yerçekimi ref. $\rightarrow$ hata hesapla\quad
+        \textbf{3.} PI $\rightarrow$ düzelt\\[1pt]
+        \textit{Jiro hız bilgisi verir; ivmeölçer ``kayıyorsun, düzelt'' der.}\\[1pt]
+        \textbf{$k_p$} = düzeltme hızı ($k_p{\uparrow}$ titreşime duyarlı, $k_p{\downarrow}$ yavaş)\enspace
+        \textbf{$k_i$} = bias düzeltmesi\\
+        SIT'te statik açı salınımına bakılarak ayarlandı.\enspace Yakınsama: \textbf{2--3 s}.
+      \end{exampleblock}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ---------------------------------------------------------------
+\begin{frame}{Yükseklik Kalman Filtresi}{Baro + IMU füzyonu ile gürültüden arınmış irtifa}
+  \centering
+  \includegraphics[width=\textwidth,height=0.44\textheight,keepaspectratio]{kalman.png}
+  \par\vspace{2pt}
+  \begin{columns}[T]
+    \begin{column}{0.40\textwidth}
+      \begin{block}{\tiny 3-durumlu kestirim}
+        \tiny \textbf{[irtifa,\ hız,\ ivme-bias]}\\
+        Baro: yavaş ama mutlak ref.\\
+        IMU: hızlı ama kayma var\\
+        Kalman $\rightarrow$ güvenilir \textbf{hız} $\rightarrow$ doğru apogee
+      \end{block}
+      \vspace{1pt}
+      \begin{alertblock}{\tiny Q ve R}
+        \tiny
+        \textbf{R} = ölçüm gürültüsü (baro varyansı ölçüldü)\\
+        \textbf{Q} = süreç gürültüsü (model sapması)\\
+        Q${\downarrow}$ sensöre güven / Q${\uparrow}$ modele güven
+      \end{alertblock}
+    \end{column}
+    \begin{column}{0.60\textwidth}
+      \begin{exampleblock}{\tiny Nasıl Çalışır? — Predict \& Update}
+        \tiny
+        \textbf{Predict:} fizik modeli ile sonraki durumu tahmin et\\
+        \quad irtifa $+{=}$ hız$\times$dt,\enspace hız $+{=}$ ivme$\times$dt\\[2pt]
+        \textbf{Update:} baro ölçümü gelince tahmini düzelt\\[2pt]
+        \textbf{R} = baroya ne kadar güvenilsin?\\
+        \quad R${\uparrow}$ $\rightarrow$ az ağırlık\enspace/\enspace R${\downarrow}$ $\rightarrow$ çok ağırlık\\
+        \quad Baro gürültülü $\Rightarrow$ R yüksek tutuldu.
+      \end{exampleblock}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ---------------------------------------------------------------
+\begin{frame}{Uçuş Durum Makinesi — 7 Faz}{If-else spagettisi yerine izlenebilir FSM}
+  \begin{columns}[c]
+    \begin{column}{0.58\textwidth}
+      \centering
+      \includegraphics[width=\linewidth,height=0.64\textheight,keepaspectratio]{flight_fsm.png}
+    \end{column}
+    \begin{column}{0.42\textwidth}
+      \scriptsize
+      \textbf{IDLE} $\rightarrow$ \textbf{BOOST} $\rightarrow$ \textbf{COAST} $\rightarrow$
+      \textbf{APOGEE} $\rightarrow$ \textbf{DROGUE} $\rightarrow$ \textbf{MAIN} $\rightarrow$ \textbf{LANDED}
+      \vspace{4pt}
+      \begin{alertblock}{\footnotesize Çift güvenlikli apogee}
+        \scriptsize
+        \begin{itemize}
+          \item \textbf{Hız bazlı:} Kalman dikey hızı $<$ 0
+          \item \textbf{Tilt bazlı:} Pitch açısı $>$ 70$^\circ$
+        \end{itemize}
+        Biri tetiklenince Drogue paraşütü açılır.
+      \end{alertblock}
+      \begin{itemize}
+        \item BOOST: ivme $>$ 45 m/s$^2$
+        \item MAIN: irtifa $<$ 300 m
+        \item LANDED: hız $<$ 2 m/s
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ---------------------------------------------------------------
+\begin{frame}{Güvenilirlik Mekanizmaları}{Kilitlenmeye ve sensör arızasına karşı koruma}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \begin{block}{Donanımsal / yazılımsal kalkanlar}
+        \scriptsize
+        \begin{itemize}\setlength{\itemsep}{3pt}
+          \item \textbf{IWDG watchdog} ($\sim$2 s)\\
+            \tiny Donanım sayacı geri sayar; yazılım 2 sn içinde sıfırlamazsa CPU reset atar.
+            Baro görevi her 100 ms'de bir besler — donma olursa otomatik kurtarma.
+          \item \textbf{Stack overflow koruması}\\
+            \tiny Her FreeRTOS task'ının ayrı stack'i var. \texttt{configCHECK\_FOR\_STACK\_OVERFLOW=2}:
+            FreeRTOS her context-switch'te stack dolgusunu kontrol eder; taşma varsa hook çağrılır.
+          \item \textbf{Fatal handler} $\rightarrow$ \texttt{NVIC\_SystemReset()}\\
+            \tiny Hata durumunda sonsuz döngüde kalmak yerine sistemi yeniden başlatır.
+            IWDG + reset = sistem kendi kendine toparlanabilir.
+        \end{itemize}
+      \end{block}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \begin{exampleblock}{Baro-only ``degraded'' mod}
+        \footnotesize IMU başlamazsa sistem \textbf{kaybolmaz, uçmaya devam eder}:
+        \scriptsize
+        \begin{tabular}{@{}lll@{}}
+          \toprule
+          \textbf{Özellik} & \textbf{IMU var} & \textbf{IMU yok} \\
+          \midrule
+          BOOST tespiti & ivme & baro hızı \\
+          Kalman girdisi & dikey ivme & 0 \\
+          Tilt apogee & aktif & pasif \\
+          Hız apogee & aktif & \textbf{aktif} \\
+          \bottomrule
+        \end{tabular}
+      \end{exampleblock}
+      \centering\scriptsize
+      IMU sürücüsü 3 deneme başarısız olursa görev silinir, sistem baro moduyla devam eder.
+    \end{column}
+  \end{columns}
+\end{frame}

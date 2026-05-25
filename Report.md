@@ -361,10 +361,7 @@
 - FreeRTOS'un bare-metal alternatiflere üstünlüğünün bu projede doğrulanması: %96.55 idle → gerçek zamanlılık sağlandı, hiçbir görev deadline kaçırmadı
 - DMA tabanlı sensör okumanın CPU yükü üzerindeki etkisi: bmiTask 331 aktivasyon ama sadece %2.39
 - PIL test metodolojisinin değeri: gerçek uçuş olmadan fiziksel olarak anlam ifade eden bir doğrulama
-- Sınırlılıklar:
-  - Gyro kalibrasyonu yapılmadı → Mahony'de küçük statik offset
-  - SUT'ta ivme kanalı susturuldu → gerçek boost fazında Kalman daha gürültülü olabilir
-  - Gerçek uçuş testi yapılmadı
+
 
 ### 5.2. Sonuçlar
 

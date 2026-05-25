@@ -71,10 +71,15 @@ static void gnss_task(void *arg)
 
     for (;;) {
         uint32_t notif;
-        xTaskNotifyWait(0U, 0x03U, &notif, portMAX_DELAY);
+        BaseType_t got = xTaskNotifyWait(0U, 0x03U, &notif,
+                                         pdMS_TO_TICKS(100U));
 
-        if (notif & 0x01U) parse_half(s_dma_buf);                  /* birinci yarı */
-        if (notif & 0x02U) parse_half(s_dma_buf + GNSS_BUF_HALF);  /* ikinci yarı  */
+        if (got == pdTRUE) {
+            if (notif & 0x01U) parse_half(s_dma_buf);
+            if (notif & 0x02U) parse_half(s_dma_buf + GNSS_BUF_HALF);
+        }
+        /* GNSS modülü olmasa bile 100 ms'de bir buraya geliyoruz —
+         * SystemView'da task görünür, snapshot is_valid=false kalır. */
     }
 }
 

@@ -56,13 +56,6 @@ Gerçek donanım modunda; ISR'dan başlayan sensör tetiklemeleri bir zincirleme
 
 Snapshot mekanizması, görevlerin \textit{veriye tek kaynaklı dönüşümünü} garanti altına almak için Derinliği 1 (\textit{depth=1}) boyutunda olan FreeRTOS kuyruklarıyla inşa edilmiştir. Yığın (Stack) bellek taşmalarına karşı FreeRTOS konfigürasyonunda \verb|configCHECK_FOR_STACK_OVERFLOW| seviyesi 2'ye çekilmiştir.
 
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=0.8\textwidth]{sekiller/FreeRTOSGörevMimarisi.png}
-    \caption{FreeRTOS Görevleri Arası Bağımlılık ve Sinyal Akış Diyagramı}
-    \label{fig:freertos_gorev_mimarisi}
-\end{figure}
-
 \begin{table}[htbp]
     \centering
     \caption{FreeRTOS Görev Öncelikleri ve Temel Özellikleri}

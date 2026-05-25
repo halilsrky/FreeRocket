@@ -1,0 +1,71 @@
+% =================================================================
+% BÖLÜM 5 — SONUÇ VE ÖNERİLER
+% =================================================================
+\section{Sonuç ve Öneriler}
+
+% ---------------------------------------------------------------
+% Metrik tablosu slaytı
+\begin{frame}{Ölçülen Başarım Metrikleri}{SEGGER SystemView post-mortem + CMake build çıktısı}
+  \centering
+  \includegraphics[width=\textwidth,height=0.48\textheight,keepaspectratio]{context.png}
+  \par\vspace{6pt}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \begin{exampleblock}{\small CPU \& Görev Verimi}
+        \scriptsize
+        \begin{itemize}
+          \item İşlemci zamanının \textbf{\color{izuBordo}\%97.14}'ü Idle — sistem rahat çalışıyor
+          \item IMU en yoğun görev: \textbf{373 Hz} aktivasyon, \textbf{\%7.02} CPU
+          \item Baro + Telemetri + GNSS toplam: \textbf{$<$ 2\%}
+          \item Stack taşması \& veri kaybı: \textbf{Sıfır}
+        \end{itemize}
+      \end{exampleblock}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \begin{block}{\small Bellek \& Doğrulama}
+        \scriptsize
+        \begin{itemize}
+          \item Flash kullanımı: \textbf{77.9 KB} / 512 KB \enspace(\textbf{\%14.9})
+          \item RAM kullanımı (yazılım): \textbf{26.8 KB} / 128 KB \enspace(\textbf{\%20.4})
+          \item SUT tamamlama süresi: \textbf{51.5 sn}
+          \item Tüm FSM faz geçişleri RocketPy ile doğrulandı
+        \end{itemize}
+      \end{block}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% Sonuç ve öneriler slaytı
+\begin{frame}{Sonuç ve Gelecek Çalışmalar}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \begin{exampleblock}{Başarılan hedefler}
+        \footnotesize
+        \begin{itemize}
+          \item STM32F446 üzerinde hard real-time FreeRTOS uçuş yazılımı
+          \item DMA + kesme tabanlı asenkron veri toplama
+          \item Mahony AHRS + 3-durumlu Kalman füzyonu
+          \item 7-fazlı FSM ile hatasız faz geçişleri
+          \item IWDG + degraded mod ile güvenilirlik
+          \item SIT / SUT (PIL) ile RocketPy doğrulaması
+        \end{itemize}
+      \end{exampleblock}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \begin{block}{Gelecek çalışmalar}
+        \footnotesize
+        \begin{itemize}
+          \item \textbf{Gyro kalibrasyonu} — IDLE'da bias ölçümü
+          \item \textbf{Fiziksel fırlatma} — saha doğrulaması
+          \item \textbf{LoRa (E22)} — UART4 hattı donanımda hazır
+          \item \textbf{EKF + kara kutu} — SD log ile gelişmiş filtre
+        \end{itemize}
+      \end{block}
+    \end{column}
+  \end{columns}
+  \vspace{4pt}
+  \begin{alertblock}{\centering Değişmez prensip}
+    \centering\small
+    Önce güvenilir ve anlaşılır çalışan basit sistem $\rightarrow$ sonra genişletme.
+  \end{alertblock}
+\end{frame}

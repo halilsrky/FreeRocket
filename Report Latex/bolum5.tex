@@ -1,9 +1,29 @@
-\section{BÖLÜM V}
+\section{BÖLÜM: TARTIŞMA VE SONUÇLAR}
 \label{bolum5}
 
-\subsection{Tartışma ve Sonuçlar}
-Bu bölüm bulgular bölümünde ortaya koyduğunuz sonuçların derli toplu olarak ifade edildiği, bunlara dayalı olarak çıkarım ve yorumlarınızın verildiği bölümdür. Bu yönüyle, bulgular gibi tezinizin en önemli bölümüdür. Bu bölümde sizden bu çalışma sonucunda ne(ler) bulduğunuzu ortaya koymanız istenir. 
+\subsection{Tartışma}
+\label{tartisma}
 
-Ayrıca, bu sonuçların literatür taramasında bulduğunuz hangi sonuçlara benzediği veya benzemediğini ifade etmeniz beklenir. Buna tartışma adı verilir. Son olarak da bu bölümde çalışmanız ile ilgili olarak önerilerinizi sunmanız gerekir. Sonuç bölümü; tartışma ve sonuç, sonuç ve öneriler gibi farklı başlıklar alabilir. Ayrıca, bölüm içerisinde 1-sonuç ve 2-öneriler gibi alt başlıklar koymanız istenebilir. 
+Elde edilen bulgular literatürdeki benzer çalışmalarla karşılaştırıldığında, FreeRTOS tabanlı çevik bir görev yürütme mimarisinin geleneksel (bare-metal) anadöngü tabanlı aviyonik sistemlere kıyasla daha güvenilir (deterministik) ve sürdürülebilir bir çerçeve oluşturduğu açıkça görülmektedir. Çoğu donanımsal sistem çalışmasında yüksek frekanslı sensör okuma süreçleri donanım (CPU) engelinden dolayı işlemci gecikmeleri ve kilitlenmeleri yaratırken, bu çalışmada uygulanan DMA (Doğrudan Bellek Erişimi) ve kesme bildirimli asenkron olay mimarisi (%97.14 işlemci rölanti/idle değeri) donanım yükünü en aza indirgemiştir. Görev bazlı (task-based) yaklaşımlar yazılım karmaşasını "spagetti" kod yapısından çıkararak modüler ve izlenebilir bir düzene sokmuştur.
+Ayrıca, Processor-in-the-Loop (SUT) test metodolojisi entegre edilerek, literatürde belirtilen simülasyon araçları (ör. RocketPy \cite{rocketpy}) ile fiziksel bir roket prototipi tasarlanmadan dahi roketin tüm uçuş bilgisayarı faz geçişlerinin gerçek uçuş koşullarına eşdeğer biçimde doğrulanabileceği başarılı şekilde gösterilmiştir.
+
+\subsection{Sonuçlar}
+\label{sonuclar}
+
+Bu çalışmada, 168 MHz çalışma frekansındaki STMicroelectronics Cortex-M4 (STM32F446RE) platformu üzerinde katı gerçek zamanlı (hard real-time) görev kısıtlamalarını kusursuzca karşılayabilen, modüler FreeRTOS model roket uçuş bilgisayarı yazılımı başarıyla tasarlanmış ve SystemView donanım profillemesi ile doğrulanmıştır. 
+BMI088 sensöründen donanım kesmesi ekseninde toplanan ivme-jiroskop verileri ile BME280 barometre verileri; işlemciyi bloke etmeden toplanıp, Mahony AHRS Quaternion Yönelim filtresi ve Yükseklik Kalman (3-Durumlu) algoritmalarıyla gürültüden arındırılarak hatasız durum kestirimini sağlamıştır. 
+
+SUT sentetik uçuş profili esnasında kurgulanan 7-Fazlı Uçuş Durum Makinesi (FSM); roket fırlatma anını, tepe noktasını (apogee) ve yüksek hassasiyetli drogue / main paraşüt açılış kararlarını gecikme veya eşik isabeti hatası olmadan çalıştırmıştır. Sisteme kurulan donanımsal Bağımsız Bekçi Zamanlayıcısı (IWDG) ile Memory (Stack) Overflow korumaları kilitlenme anında devreyi güvenli modda uyanacak şekilde kurallandırmış, olası GNSS ve iletişim arızalarında baro-only (kısıtlandırılmış/degraded mod) kararıyla roketin göreve devam etmesi sağlanmıştır. İşlemcinin tüm analizler ve yüksek zaman maliyetli filtrelemeler altında dahi çok rahat seviyede kapasite fazlası (Idle durumu) bulundurması, uçuş mimarisinin mimari gereksinimleri büyük bir farkla aştığını ispatlamaktadır.
+
+\subsection{Öneriler}
+\label{oneriler}
+
+Bu proje sonunda güvenilirliği kanıtlanan uçuş yazılım altyapısının donanımsal ya da algoritmik kapsamda zenginleştirilmesi bağlamında gelecekteki geliştirmeler için aşağıdaki öneriler sunulmaktadır:
+\begin{itemize}
+    \item \textbf{Dinamik Gyro Kalibrasyonu (Bias):} Sistemin başlangıç fazında (IDLE) \textit{N} miktarında örneklemeyle jiroskop sensör hatalarının (bias) bulunması ve Mahony filtresine ofset olarak çıkartılması kalibre edilebilir. Bu sayede Yaw eksenindeki küçük statik kayma miktarı izole edilebilir.
+    \item \textbf{Fiziksel (Alan) Fırlatma Testleri:} Uçuş yazılımının güvenilirlik doğrulama testlerinin (SIT ve SUT) fiziksel bileşenlerle onaylanması adına roketin düşük irtifa fırlatma motorlarıyla denenmesi tavsiye edilmektedir.
+    \item \textbf{LoRa (E22) Kesintisiz Telemetri:} Donanım mimarisinde pinleri belirlenmiş olan UART4 çevreseli üzerinden E22 modülüne driver yazılarak mesafe ve veri sinyal hattının uzun menzilli bir iletişim ağıyla yer istasyonuna entegre edilmesi sağlanabilir.
+    \item \textbf{Genişletilmiş Filtreleme (EKF) ve Kara Kutu Kaydı:} İşlemcinin FPU çekirdeği ile sahip olduğu bant genişliği gözlenildiğinde; matematiksel maliyeti daha yüksek olan Gelişmiş Kalman Filtresinin (Extended Kalman Filter - EKF) entegre edilmesi değerlendirilebilir. Ek olarak sensör kopmasına karşılık SPI üzerinden bağlı bir bellekte kara kutu (SD log) dosyalaması faydalı olacaktır.
+\end{itemize}
 
 \clearpage

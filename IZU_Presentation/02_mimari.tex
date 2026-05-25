@@ -1,0 +1,126 @@
+% =================================================================
+% BÖLÜM 2 — SİSTEM MİMARİSİ
+% =================================================================
+\section{Sistem Mimarisi}
+
+% ---------------------------------------------------------------
+\begin{frame}{5 Katmanlı Yazılım Mimarisi}{Tek yönlü bağımlılık ilkesi}
+  \begin{columns}[c]
+    \begin{column}{0.62\textwidth}
+      \centering
+      \includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]{layered_arch.png}
+    \end{column}
+    \begin{column}{0.38\textwidth}
+      \scriptsize
+      Her katman yalnızca altındakiyle konuşur; donanım bağımlılığı izole edilir.
+      \begin{itemize}\setlength{\itemsep}{2pt}
+        \item \textbf{Uygulama} — imu / baro / gnss / telemetry task
+        \item \textbf{Algoritma} — Mahony, Kalman, FSM, SUT
+        \item \textbf{Sürücü} — bmi088, bme280, NMEA parser
+        \item \textbf{HAL + Middleware} — CubeMX, FreeRTOS, SEGGER
+        \item \textbf{Donanım} — BMI088, BME280, L86, USART
+      \end{itemize}
+      \vspace{2pt}
+      \begin{block}{\footnotesize Modülerlik}
+        \scriptsize SIT/SUT test katmanları aynı mimariye temiz biçimde eklenir.
+      \end{block}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ---------------------------------------------------------------
+\begin{frame}{Donanım Haritası}{STM32F446 — Cortex-M4 @ 180 MHz, FPU, 512 KB Flash / 128 KB SRAM}
+  \centering
+  \includegraphics[width=0.92\textwidth,height=0.48\textheight,keepaspectratio]{hw_block.png}
+  \par\vspace{3pt}
+  \begin{columns}[T]
+    \begin{column}{0.42\textwidth}
+      \centering\scriptsize
+      \begin{tabular}{@{}ll@{}}
+        \toprule
+        \textbf{Birim} & \textbf{Görev} \\
+        \midrule
+        I2C1    & BMI088 IMU \\
+        I2C3    & BME280 Baro \\
+        EXTI3/4 & BMI088 DRDY Kesmesi \\
+        USART6  & GNSS (L86) \\
+        USART2  & Telemetri / SIT \\
+        IWDG    & Donanım Watchdog \\
+        \bottomrule
+      \end{tabular}
+    \end{column}
+    \begin{column}{0.58\textwidth}
+      \begin{block}{}
+        \scriptsize
+        \begin{itemize}
+          \item \textbf{DMA} — CPU'yu meşgul etmeden veri taşır
+          \item \textbf{NVIC + EXTI} — asenkron veri-hazır kesmeleri
+          \item \textbf{FPU} — quaternion float işlemleri donanımsal olarak hızlı\\
+            \tiny \textit{FPU (Floating Point Unit): kayan nokta işlemlerini yazılımsal\\
+            emülasyon yerine donanımda yapar; Mahony/Kalman hesapları\\
+            CPU'yu daha az meşgul eder.}
+        \end{itemize}
+      \end{block}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ---------------------------------------------------------------
+\begin{frame}{FreeRTOS Görev Modeli}{Sabit öncelikli, birbirini kesebilen dört görev}
+  \begin{table}
+    \centering\small
+    \begin{tabular}{@{}llll@{}}
+      \toprule
+      \textbf{Görev} & \textbf{Öncelik} & \textbf{Tetikleyici} & \textbf{İşlem / Periyot} \\
+      \midrule
+      \texttt{imu\_task}       & High        & Donanım kesmesi    & Mahony + snapshot \\
+      \texttt{baro\_task}      & BelowNormal & 100 ms periyot     & Kalman + Flight SM \\
+      \texttt{gnss\_task}      & BelowNormal & DMA Circular RX    & 1 Hz NMEA parse \\
+      \texttt{telemetry\_task} & BelowNormal & İletişim hazır     & 50 Hz UART TX \\
+      \bottomrule
+    \end{tabular}
+  \end{table}
+  \vspace{6pt}
+  \begin{exampleblock}{Deterministik veri zinciri (IMU)}
+    \centering\small
+    DRDY Pin $\rightarrow$ EXTI ISR $\rightarrow$ \texttt{xTaskNotifyFromISR} $\rightarrow$
+    Görev uyanır $\rightarrow$ DMA başlat $\rightarrow$ DMA-Complete IRQ $\rightarrow$
+    Parse $\rightarrow$ Snapshot
+  \end{exampleblock}
+  \centering\footnotesize
+  ISR içinde iş minimumda: sadece bildirim gönderilir, hesaplama göreve devredilir.
+\end{frame}
+
+% ---------------------------------------------------------------
+\begin{frame}[fragile]{Senkronizasyon Kalıpları}{Bekleme süresini minimuma indiren iki desen}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \centering
+      \textbf{\small ISR $\rightarrow$ Görev: Task Notification}\\[2pt]
+      \includegraphics[width=\linewidth,height=0.38\textheight,keepaspectratio]{task_notify.png}
+\begin{lstlisting}
+void HAL_I2C_MemRxCpltCallback(...)
+{
+  BaseType_t woken = pdFALSE;
+  xTaskNotifyFromISR(s_handle,
+      NOTIFY_DMA_DONE, eSetBits, &woken);
+  portYIELD_FROM_ISR(woken);
+}
+\end{lstlisting}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \centering
+      \textbf{\small Görev $\rightarrow$ Görev: Snapshot Queue}\\[2pt]
+      \includegraphics[width=\linewidth,height=0.44\textheight,keepaspectratio]{snapshot_queue.png}
+      \vspace{2pt}
+      \begin{block}{\footnotesize Derinliği 1 kuyruk (mailbox)}
+        \scriptsize
+        \begin{itemize}
+          \item \texttt{xQueueOverwrite} — üretici hep son veriyi yazar
+          \item \texttt{xQueuePeek} — tüketici eksiltmeden okur
+          \item Tek sahipli, atomik, gereksiz tamponlama yok
+        \end{itemize}
+      \end{block}
+    \end{column}
+  \end{columns}
+\end{frame}

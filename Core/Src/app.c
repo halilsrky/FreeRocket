@@ -5,10 +5,10 @@
 #include "telemetry_task.h"
 #include "gnss_task.h"
 #include "cmd_task.h"
-#include "sut_task.h"
 #include "sys_mode.h"
 #include "cmsis_os.h"
 #include "SEGGER_SYSVIEW.h"
+#include "sut_task.h"
 
 void Application_Start(void)
 {

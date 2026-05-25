@@ -1,0 +1,126 @@
+% =================================================================
+% BÖLÜM 4 — TEST, DOĞRULAMA VE BULGULAR
+% =================================================================
+\section{Test, Doğrulama ve Bulgular}
+
+% ---------------------------------------------------------------
+\begin{frame}{Test Metodolojisi: SIT ve SUT}{İki katmanlı doğrulama — fiziksel roket olmadan}
+  \begin{columns}[c]
+    \begin{column}{0.42\textwidth}
+      \begin{block}{\small SIT — Sensör İzleme Testi}
+        \scriptsize
+        \emph{Donanım / sürücü} doğrulaması.
+        \begin{itemize}
+          \item Gerçek sensör $\rightarrow$ STM32 $\rightarrow$ Python GUI
+          \item DMA / I2C / USART yolları test edilir
+          \item Statik test: Z ekseni $\approx -9.81$ m/s$^2$
+        \end{itemize}
+      \end{block}
+      \vspace{6pt}
+      \begin{exampleblock}{\small SUT — Sentetik Uçuş Testi (PIL)}
+        \scriptsize
+        \emph{Algoritma / FSM} doğrulaması.
+        \begin{itemize}
+          \item \textbf{Processor-in-the-Loop}
+          \item PC, RocketPy verisini UART'tan yollar
+          \item STM32 Mahony + Kalman + FSM çalıştırır
+        \end{itemize}
+      \end{exampleblock}
+    \end{column}
+    \begin{column}{0.58\textwidth}
+      \centering
+      \includegraphics[width=\linewidth,height=0.74\textheight,keepaspectratio]{sit_gui.png}\\[2pt]
+      {\scriptsize SIT arayüzü — canlı telemetri ve 3D yönelim}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ---------------------------------------------------------------
+\begin{frame}{SUT — RocketPy ile Sentetik Uçuş (PIL)}{Gerçek uçuş koşullarına eşdeğer referans veri}
+  \begin{columns}[c]
+    \begin{column}{0.44\textwidth}
+      \centering
+      \includegraphics[width=\linewidth,height=0.56\textheight,keepaspectratio]{sut_arch.png}\\[2pt]
+      {\scriptsize Processor-in-the-Loop akış şeması}
+    \end{column}
+    \begin{column}{0.56\textwidth}
+      \centering
+      \includegraphics[width=\linewidth,height=0.46\textheight,keepaspectratio]{sim_altitude.png}\\[4pt]
+      \begin{exampleblock}{}
+        \centering\scriptsize
+        RocketPy simülasyon verisi UART üzerinden STM32'ye aktarılır;\\
+        Mahony + Kalman + FSM \textbf{gerçek zamanlı} çalışır ve\\
+        tüm FSM faz geçişleri doğrulanır.
+      \end{exampleblock}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ---------------------------------------------------------------
+\begin{frame}{Sonuç 1 — Kalman Filtresi}{Ham baro vs. filtrelenmiş irtifa}
+  \begin{columns}[c]
+    \begin{column}{0.5\textwidth}
+      \centering
+      \includegraphics[width=\linewidth,height=0.58\textheight,keepaspectratio]{kalman_result_nonfilter.png}\\[2pt]
+      {\scriptsize \textbf{Filtresiz} — Ham barometre çıkışı}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \centering
+      \includegraphics[width=\linewidth,height=0.58\textheight,keepaspectratio]{kalman_result_filter.png}\\[2pt]
+      {\scriptsize \textbf{Filtrelenmiş} — 3-durumlu Kalman çıkışı}
+    \end{column}
+  \end{columns}
+  \vspace{4pt}
+  \begin{exampleblock}{}
+    \centering\scriptsize
+    Kalman filtresi baro gürültüsünü baskılarken ivmeölçer füzyonu ile
+    \textbf{hız ve irtifa tahminini} kararlı hâle getirir —
+    apogee tespiti ve FSM geçişleri bu çıktı üzerinden çalışır.
+  \end{exampleblock}
+\end{frame}
+
+% ---------------------------------------------------------------
+\begin{frame}{SUT Testi — Tamamlanmış Uçuş}{FSM faz geçişleri ve 3D yönelim}
+  \centering
+  \includegraphics[width=\textwidth,height=0.78\textheight,keepaspectratio]{sut_gui.png}
+\end{frame}
+
+
+% ---------------------------------------------------------------
+\begin{frame}{Preemption Kanıtı}{Yüksek öncelikli IMU, çalışan BARO görevini keserek işlemciyi devraldı}
+  \centering
+  \includegraphics[width=\textwidth,height=0.78\textheight,keepaspectratio]{event_list_imu_baro.png}
+\end{frame}
+
+% ---------------------------------------------------------------
+\begin{frame}{Sonuç 3 — IMU Mahony Füzyon Kararlılığı}{300 saniyelik durağan drift testi}
+  \begin{columns}[c]
+    \begin{column}{0.5\textwidth}
+      \centering
+      \includegraphics[width=\linewidth,height=0.55\textheight,keepaspectratio]{imu_1s.png}\\[2pt]
+      {\scriptsize \textbf{1. saniye} — başlangıç referansı}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \centering
+      \includegraphics[width=\linewidth,height=0.55\textheight,keepaspectratio]{imu_300s.png}\\[2pt]
+      {\scriptsize \textbf{300. saniye} — Yaw drift gözlemi}
+    \end{column}
+  \end{columns}
+  \vspace{2pt}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \begin{block}{\scriptsize Roll \& Pitch}
+        \tiny 300 saniye boyunca \textbf{kayma yok}.\\
+        Mahony yerçekimi vektörünü referans alır $\rightarrow$ ivmeölçer her adımda düzeltir.
+      \end{block}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \begin{alertblock}{\scriptsize Yaw — Neden Drift?}
+        \tiny Mahony'nin Yaw için referans vektörü \textbf{yok}.\\
+        Manyetometre olsaydı manyetik kuzey referans verirdi.\\
+        Sadece jiroskop entegrali var $\rightarrow$ her örnekte küçük hata birikir $\rightarrow$ drift.\\[1pt]
+        \textit{Uçuşta sorun değil: $\sim$60 sn uçuşta drift apogee tespitini etkilemiyor.}
+      \end{alertblock}
+    \end{column}
+  \end{columns}
+\end{frame}
