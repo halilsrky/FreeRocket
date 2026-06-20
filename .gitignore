@@ -51,3 +51,9 @@ desktop.ini
 # Python bytecode
 __pycache__/
 *.pyc
+
+# Proje belgeleri (GitHub'da gizli)
+IZU_Presentation/
+Report Latex/
+gdb_user_manuel.md
+SUT.md
